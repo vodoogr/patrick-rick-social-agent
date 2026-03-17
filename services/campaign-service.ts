@@ -26,6 +26,27 @@ export const CampaignService = {
     return data; // Returns the new campaign ID
   },
 
+  async getAll(): Promise<Campaign[]> {
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from('campaigns')
+      .select('*, songs(*)')
+      .order('created_at', { ascending: false });
+    
+    if (error) throw error;
+    return data as any;
+  },
+
+  async updateStatus(id: string, status: string): Promise<void> {
+    const supabase = createClient();
+    const { error } = await supabase
+      .from('campaigns')
+      .update({ status })
+      .eq('id', id);
+    
+    if (error) throw error;
+  },
+
   async incrementDay(): Promise<void> {
     const supabase = createClient();
     const { error } = await supabase.rpc('increment_current_campaign_day');

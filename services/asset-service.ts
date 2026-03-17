@@ -7,10 +7,30 @@ export const AssetService = {
     const { data, error } = await supabase
       .from('assets')
       .select('*')
-      .eq('song_id', songId);
-    
+      .eq('song_id', songId)
+      .eq('owner_id', (await supabase.auth.getUser()).data.user?.id)
+      .order('created_at', { ascending: false });
+
     if (error) throw error;
-    return data || [];
+    return data as Asset[];
+  },
+
+  async getAll(): Promise<Asset[]> {
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from('assets')
+      .select('*')
+      .eq('owner_id', (await supabase.auth.getUser()).data.user?.id)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data as Asset[];
+  },
+
+  getPublicUrl(path: string): string {
+    const supabase = createClient();
+    const { data } = supabase.storage.from('assets').getPublicUrl(path);
+    return data.publicUrl;
   },
 
   async upload(file: File, path: string, type: AssetType, songId?: string): Promise<Asset> {

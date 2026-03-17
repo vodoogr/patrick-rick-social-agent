@@ -35,6 +35,18 @@ export const PostService = {
       .eq('id', id);
     
     if (error) throw error;
+  },
+
+  async getById(id: string): Promise<GeneratedPost | null> {
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from('generated_posts')
+      .select('*, campaigns(*, songs(*))')
+      .eq('id', id)
+      .single();
+    
+    if (error) return null;
+    return data as any;
   }
 };
 
