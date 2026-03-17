@@ -2,25 +2,25 @@ import { createClient } from '@/lib/supabase/client';
 import { AppSettings } from '@/types';
 
 export const SettingService = {
-  async get(userId: string): Promise<AppSettings | null> {
+  async get(): Promise<AppSettings | null> {
     const supabase = createClient();
     const { data, error } = await supabase
       .from('app_settings')
       .select('*')
-      .eq('user_id', userId)
       .single();
     
     if (error) return null;
     return data;
   },
 
-  async update(userId: string, settings: Partial<AppSettings>): Promise<void> {
+  async update(settings: Partial<AppSettings>): Promise<void> {
     const supabase = createClient();
     const { error } = await supabase
       .from('app_settings')
       .update(settings)
-      .eq('user_id', userId);
+      .eq('owner_id', (await supabase.auth.getUser()).data.user?.id);
     
     if (error) throw error;
   }
 };
+

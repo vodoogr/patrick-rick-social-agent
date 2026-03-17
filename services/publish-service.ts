@@ -1,28 +1,25 @@
 import { createClient } from '@/lib/supabase/client';
-import { PostStatus, PlatformType } from '@/types';
+import { PostStatus, PlatformName } from '@/types';
 
 export const PublishService = {
-  /**
-   * Orchestrates the publishing of a post to a specific platform.
-   * Note: External API implementation deferred as per requirements.
-   */
-  async publishToPlatform(postId: string, platform: PlatformType): Promise<void> {
+  async publishToPlatform(postId: string, platform: PlatformName): Promise<void> {
     const supabase = createClient();
     
     // 1. Log attempt
     await supabase.from('publish_logs').insert({
       post_id: postId,
       platform,
-      status: 'attempt',
-      message: `Starting publish process for ${platform}`
+      success: false,
+      response_message: `Starting publish process for ${platform}`
     });
 
-    // 2. Prepare for external API (Placeholder)
+    // 2. Logic for external API (deferred)
     console.log(`Publishing post ${postId} to ${platform}...`);
 
-    // 3. Update status to queued/processing
+    // 3. Update status
     await supabase.from('post_platforms')
       .update({ publish_status: PostStatus.QUEUED })
       .match({ post_id: postId, platform });
   }
 };
+

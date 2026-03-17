@@ -1,3 +1,18 @@
+export enum SongEra {
+  BLUE = 'blue',
+  YELLOW = 'yellow',
+  RED = 'red',
+  GREEN = 'green',
+  PURPLE = 'purple',
+  BLACK = 'black',
+  WHITE = 'white',
+  EIGHTIES = '80s',
+  NINETIES = '90s',
+  BALLADS = 'ballads',
+  UNPLUGGED = 'unplugged',
+  PRESENT = 'present',
+}
+
 export enum CampaignStatus {
   DRAFT = 'draft',
   ACTIVE = 'active',
@@ -7,21 +22,32 @@ export enum CampaignStatus {
 
 export enum PostStatus {
   DRAFT = 'draft',
+  GENERATED = 'generated',
   QUEUED = 'queued',
   SCHEDULED = 'scheduled',
   PUBLISHED = 'published',
   FAILED = 'failed',
+  CANCELLED = 'cancelled',
 }
 
-export enum PlatformType {
+export enum PublishMode {
+  APPROVAL = 'approval',
+  AUTO = 'auto',
+}
+
+export enum PlatformName {
   TIKTOK = 'tiktok',
-  INSTAGRAM = 'instagram',
-  YOUTUBE = 'youtube',
+  INSTAGRAM_REELS = 'instagram_reels',
+  YOUTUBE_SHORTS = 'youtube_shorts',
 }
 
 export enum AssetType {
-  VIDEO = 'video',
-  IMAGE = 'image',
   AUDIO = 'audio',
-  DOCUMENT = 'document',
+  COVER = 'cover',
+  IMAGE = 'image',
+  VIDEO = 'video',
+  SUBTITLE = 'subtitle',
+  THUMBNAIL = 'thumbnail',
+  OTHER = 'other',
 }
+

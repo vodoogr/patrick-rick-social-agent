@@ -27,6 +27,8 @@ export const SongService = {
 
   async create(song: Partial<Song>): Promise<Song> {
     const supabase = createClient();
+    
+    // owner_id is handled by RLS/Trigger but good to be explicit if needed
     const { data, error } = await supabase
       .from('songs')
       .insert(song)
@@ -35,5 +37,16 @@ export const SongService = {
     
     if (error) throw error;
     return data;
+  },
+
+  async toggleActive(id: string, is_active: boolean): Promise<void> {
+    const supabase = createClient();
+    const { error } = await supabase
+      .from('songs')
+      .update({ is_active })
+      .eq('id', id);
+    
+    if (error) throw error;
   }
 };
+

@@ -1,14 +1,15 @@
 import { createAdminClient } from '@/lib/supabase/server';
 import { CampaignStatus } from '@/types';
 
-/**
- * Server-only scheduler logic intended for Edge Functions or Cron jobs.
- */
 export const SchedulerService = {
   async processDailyUpdate() {
     const supabase = createAdminClient();
 
-    // 1. Find all active campaigns
+    // 1. Increment days via RPC for all active campaigns
+    const { error } = await supabase.rpc('increment_current_campaign_day');
+    if (error) console.error('Error incrementing campaign days:', error);
+
+    // 2. Find campaigns needing generation
     const { data: campaigns } = await supabase
       .from('campaigns')
       .select('*')
@@ -17,9 +18,9 @@ export const SchedulerService = {
     if (!campaigns) return;
 
     for (const campaign of campaigns) {
-      // 2. Increment day logic
-      // 3. Trigger generation logic
       console.log(`Processing daily update for campaign ${campaign.id}`);
+      // Logic for AI generation would go here
     }
   }
 };
+

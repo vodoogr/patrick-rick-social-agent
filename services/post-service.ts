@@ -10,10 +10,8 @@ export const PostService = {
       query = query.eq('campaign_id', campaignId);
     }
 
-    const { data, error } = await supabase
-      .from('generated_posts')
-      .select('*')
-      .order('scheduled_at', { ascending: true });
+    const { data, error } = await query
+      .order('scheduled_for', { ascending: true });
     
     if (error) throw error;
     return data || [];
@@ -27,5 +25,16 @@ export const PostService = {
       .eq('id', id);
     
     if (error) throw error;
+  },
+
+  async approve(id: string): Promise<void> {
+    const supabase = createClient();
+    const { error } = await supabase
+      .from('generated_posts')
+      .update({ approval_required: false, status: PostStatus.SCHEDULED })
+      .eq('id', id);
+    
+    if (error) throw error;
   }
 };
+
