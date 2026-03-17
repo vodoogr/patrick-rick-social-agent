@@ -1,12 +1,11 @@
-export type CampaignStatus = 'draft' | 'active' | 'paused' | 'completed';
-export type PostStatus = 'draft' | 'queued' | 'scheduled' | 'published' | 'failed';
-export type PlatformType = 'tiktok' | 'instagram' | 'youtube';
+import { CampaignStatus, PostStatus, PlatformType, AssetType } from './enums';
 
 export interface Profile {
   id: string;
   email: string | null;
   full_name: string | null;
   avatar_url: string | null;
+  bio: string | null;
   updated_at: string;
 }
 
@@ -23,6 +22,7 @@ export interface Song {
   cover_url: string | null;
   spotify_link: string | null;
   youtube_link: string | null;
+  is_favorite: boolean;
   created_at: string;
 }
 
@@ -45,6 +45,7 @@ export interface PostAngle {
   name: string;
   description: string | null;
   visual_style: string | null;
+  example_hook: string | null;
 }
 
 export interface GeneratedPost {
@@ -61,8 +62,10 @@ export interface GeneratedPost {
   video_concept: string | null;
   visual_prompt: string | null;
   video_url: string | null;
+  thumbnail_url: string | null;
   status: PostStatus;
   scheduled_at: string | null;
+  published_at: string | null;
   created_at: string;
 }
 
@@ -76,6 +79,26 @@ export interface PostPlatform {
   published_at: string | null;
 }
 
+export interface PublishLog {
+  id: string;
+  post_id: string;
+  platform: PlatformType;
+  status: string;
+  message: string | null;
+  payload: any;
+  created_at: string;
+}
+
+export interface Asset {
+  id: string;
+  song_id: string;
+  type: AssetType;
+  name: string | null;
+  url: string;
+  metadata: any;
+  created_at: string;
+}
+
 export interface AppSettings {
   id: string;
   user_id: string;
@@ -87,3 +110,4 @@ export interface AppSettings {
   retry_limit: number;
   updated_at: string;
 }
+
