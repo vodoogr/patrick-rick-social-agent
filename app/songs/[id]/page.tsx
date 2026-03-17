@@ -65,7 +65,7 @@ export default function SongDetailPage() {
     try {
       setStartingCampaign(true);
       await CampaignService.startNew(song.id);
-      router.push("/");
+      router.push("/campaigns");
     } catch (err: any) {
       alert("Failed to start campaign: " + err.message);
     } finally {

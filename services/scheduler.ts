@@ -1,25 +1,26 @@
 import { createAdminClient } from '@/lib/supabase/server';
 import { CampaignStatus } from '@/types';
+import { CampaignEngine } from './campaign-engine';
 
 export const SchedulerService = {
   async processDailyUpdate() {
     const supabase = createAdminClient();
 
     // 1. Increment days via RPC for all active campaigns
-    const { error } = await supabase.rpc('increment_current_campaign_day');
-    if (error) console.error('Error incrementing campaign days:', error);
+    const { error: incError } = await supabase.rpc('increment_current_campaign_day');
+    if (incError) throw incError;
 
     // 2. Find campaigns needing generation
     const { data: campaigns } = await supabase
       .from('campaigns')
-      .select('*')
+      .select('id')
       .eq('status', CampaignStatus.ACTIVE);
 
     if (!campaigns) return;
 
+    // 3. Generate next post for each active campaign
     for (const campaign of campaigns) {
-      console.log(`Processing daily update for campaign ${campaign.id}`);
-      // Logic for AI generation would go here
+      await CampaignEngine.generateNextPost(campaign.id);
     }
   }
 };

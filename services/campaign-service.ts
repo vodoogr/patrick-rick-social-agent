@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/client';
-import { Campaign } from '@/types';
+import { Campaign, CampaignStatus } from '@/types';
 
 export const CampaignService = {
   async getActive(): Promise<Campaign | null> {
@@ -37,11 +37,24 @@ export const CampaignService = {
     return data as any;
   },
 
-  async updateStatus(id: string, status: string): Promise<void> {
+  async updateStatus(id: string, status: CampaignStatus): Promise<void> {
     const supabase = createClient();
     const { error } = await supabase
       .from('campaigns')
       .update({ status })
+      .eq('id', id);
+    
+    if (error) throw error;
+  },
+
+  async complete(id: string): Promise<void> {
+    const supabase = createClient();
+    const { error } = await supabase
+      .from('campaigns')
+      .update({ 
+        status: CampaignStatus.COMPLETED,
+        is_current: false 
+      })
       .eq('id', id);
     
     if (error) throw error;

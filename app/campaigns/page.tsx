@@ -5,6 +5,7 @@ import { Target, Play, Pause, RefreshCw, ChevronRight, LayoutList, CheckCircle2 
 import { CampaignService } from "@/services/campaign-service";
 import { PostService } from "@/services/post-service";
 import { Campaign, GeneratedPost, CampaignStatus, SongEra } from "@/types";
+import { CampaignEngine } from "@/services/campaign-engine";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -54,10 +55,28 @@ export default function CampaignsPage() {
   const handleStatusUpdate = async (id: string, status: CampaignStatus) => {
     try {
       setActionLoading(id);
-      await CampaignService.updateStatus(id, status);
+      if (status === CampaignStatus.COMPLETED) {
+        await CampaignService.complete(id);
+      } else {
+        await CampaignService.updateStatus(id, status);
+      }
       await fetchData();
     } catch (err: any) {
       alert("Failed to update status: " + err.message);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleGenerateNext = async () => {
+    if (!activeCampaign) return;
+    try {
+      setActionLoading('generate');
+      await CampaignEngine.generateNextPost(activeCampaign.id);
+      await fetchData();
+      alert("Next post draft generated!");
+    } catch (err: any) {
+      alert("Failed to generate post: " + err.message);
     } finally {
       setActionLoading(null);
     }
@@ -94,7 +113,7 @@ export default function CampaignsPage() {
                <div className="grid grid-cols-2 gap-4">
                   <div className="p-4 rounded-[1.5rem] bg-white/5 border border-white/5">
                      <p className="text-[10px] text-white/40 font-bold uppercase mb-1">CAMPAIGN DAY</p>
-                     <p className="text-2xl font-black">{activeCampaign.current_day} <span className="text-xs text-white/20">/ 07</span></p>
+                     <p className="text-2xl font-black">{activeCampaign.day_number} <span className="text-xs text-white/20">/ 07</span></p>
                   </div>
                   <div className="p-4 rounded-[1.5rem] bg-white/5 border border-white/5">
                      <p className="text-[10px] text-white/40 font-bold uppercase mb-1">ERA</p>
@@ -123,10 +142,20 @@ export default function CampaignsPage() {
                   <button 
                     onClick={() => handleStatusUpdate(activeCampaign.id, CampaignStatus.COMPLETED)}
                     className="w-12 h-12 rounded-2xl glass border border-white/10 flex items-center justify-center hover:bg-white/5 transition-colors"
+                    title="Complete & Archive"
                   >
                     <CheckCircle2 className="w-5 h-5 text-white/40" />
                   </button>
                </div>
+               
+               <button 
+                onClick={handleGenerateNext}
+                disabled={actionLoading === 'generate' || activeCampaign.status !== CampaignStatus.ACTIVE}
+                className="w-full h-12 rounded-2xl bg-blue-600 text-white font-bold flex items-center justify-center gap-2 hover:bg-blue-500 transition-all text-xs uppercase tracking-widest mt-4 disabled:opacity-50"
+               >
+                 <RefreshCw className={`w-4 h-4 ${actionLoading === 'generate' ? 'animate-spin' : ''}`} />
+                 {actionLoading === 'generate' ? 'Generating...' : 'Generate Next Narrative Post'}
+               </button>
             </div>
 
             <div className="flex-1 space-y-6">
@@ -176,7 +205,7 @@ export default function CampaignsPage() {
             <div key={campaign.id} className="glass border border-white/5 rounded-3xl p-6 group hover:border-white/10 transition-all">
               <div className="flex items-center justify-between mb-4">
                 <span className="text-[10px] font-black tracking-widest text-white/40 uppercase">{campaign.status}</span>
-                <span className="text-[10px] font-black tracking-widest text-white/20">Day {campaign.current_day}</span>
+                <span className="text-[10px] font-black tracking-widest text-white/20">Day {campaign.day_number}</span>
               </div>
               <h4 className="font-bold text-lg mb-1">{campaign.songs?.title}</h4>
               <p className="text-xs text-white/40 uppercase font-bold tracking-widest">{campaign.songs?.era} Era</p>
