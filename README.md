@@ -38,3 +38,19 @@ Modules:
 
 \- Scheduler
 
+## Current checkpoint
+
+Working:
+- Next.js app scaffolded
+- Supabase connected
+- Schema and seed applied
+- Auth flow working
+- User session available in app
+- Songs page connected to authenticated user data
+
+Next:
+- validate campaign engine with end-to-end tests
+- test start/pause/resume/complete campaign flow
+- test generated posts and post_platforms creation
+- test angle rotation
+- test scheduler-ready progression
