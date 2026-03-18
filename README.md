@@ -54,3 +54,20 @@ Next:
 - test generated posts and post_platforms creation
 - test angle rotation
 - test scheduler-ready progression
+## End of day checkpoint
+
+Completed:
+- project scaffold
+- Supabase integration
+- schema and seed
+- auth working
+- songs visible by authenticated user
+- campaign start working
+- campaign switching working
+
+Next session:
+- continue campaign engine test phases
+- validate generated_posts and post_platforms
+- validate angle rotation
+- validate complete campaign flow
+- then design Albums + Creative DNA system
