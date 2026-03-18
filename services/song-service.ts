@@ -13,6 +13,18 @@ export const SongService = {
     return data || [];
   },
 
+  async getById(id: string): Promise<Song | null> {
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from('songs')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+    
+    if (error) throw error;
+    return data;
+  },
+
   async getBySlug(slug: string): Promise<Song | null> {
     const supabase = createClient();
     const { data, error } = await supabase
