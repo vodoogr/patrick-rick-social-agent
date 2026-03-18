@@ -11,7 +11,8 @@ import {
   ArrowLeft,
   Share2,
   MoreVertical,
-  Activity
+  Activity,
+  Loader2
 } from "lucide-react";
 import { SongService } from "@/services/song-service";
 import { AssetService } from "@/services/asset-service";
@@ -37,19 +38,22 @@ export default function SongDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [startingCampaign, setStartingCampaign] = useState(false);
+  const [imgError, setImgError] = useState(false);
 
   useEffect(() => {
     async function fetchData() {
       try {
         setLoading(true);
-        // Supabase select single often expects a filter, but our service uses ID filter internally
-        const allSongs = await SongService.getAll();
-        const foundSong = allSongs.find(s => s.id === id);
+        const songId = typeof id === 'string' ? id : id?.[0];
+        if (!songId) throw new Error("Invalid song ID");
+        
+        console.log("Fetching song detail for ID:", songId);
+        const foundSong = await SongService.getById(songId);
         
         if (!foundSong) throw new Error("Song not found");
         
         setSong(foundSong);
-        const songAssets = await AssetService.getBySong(id as string);
+        const songAssets = await AssetService.getBySong(songId);
         setAssets(songAssets);
       } catch (err: any) {
         setError(err.message);
@@ -61,13 +65,22 @@ export default function SongDetailPage() {
   }, [id]);
 
   const handleStartCampaign = async () => {
-    if (!song) return;
+    if (!song) {
+      console.error("No song loaded to start campaign");
+      return;
+    }
+    
     try {
       setStartingCampaign(true);
-      await CampaignService.startNew(song.id);
+      // alert("Initiating campaign for: " + song.title); // Diagnostic alert
+      console.log("Initiating campaign for song:", song.id, song.title);
+      const campaignId = await CampaignService.startNew(song.id);
+      console.log("Campaign created successfully:", campaignId);
       router.push("/campaigns");
+      router.refresh();
     } catch (err: any) {
-      alert("Failed to start campaign: " + err.message);
+      console.error("Error starting campaign:", err);
+      alert("Failed to start campaign: " + (err.message || JSON.stringify(err)));
     } finally {
       setStartingCampaign(false);
     }
@@ -100,14 +113,19 @@ export default function SongDetailPage() {
         <div className={`absolute inset-0 bg-gradient-to-br ${eraGradients[song.era] || 'from-zinc-800/20 to-transparent'}`} />
         
         <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
-          <div className="lg:col-span-4 aspect-square rounded-3xl bg-white/5 border border-white/10 flex items-center justify-center overflow-hidden group shadow-2xl">
-            {song.cover_path ? (
-              <img src={song.cover_path} alt={song.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+          <div className="lg:col-span-4 aspect-square rounded-3xl bg-white/5 border border-white/10 flex items-center justify-center overflow-hidden group shadow-2xl relative">
+            {song.cover_path && !imgError ? (
+              <img 
+                src={song.cover_path.startsWith('http') ? song.cover_path : AssetService.getPublicUrl(song.cover_path)} 
+                alt={song.title} 
+                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" 
+                onError={() => setImgError(true)}
+              />
             ) : (
-              <Music2 className="w-24 h-24 text-white/10" />
+              <Music2 className="w-24 h-24 text-white/10 group-hover:scale-110 transition-transform duration-700" />
             )}
             <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-              <button className="w-16 h-16 rounded-full bg-white text-black flex items-center justify-center scale-90 group-hover:scale-100 transition-all shadow-xl">
+              <button className="w-16 h-16 rounded-full bg-white text-zinc-950 flex items-center justify-center scale-90 group-hover:scale-100 transition-all shadow-xl">
                 <Play className="w-6 h-6 fill-current ml-1" />
               </button>
             </div>
@@ -134,9 +152,16 @@ export default function SongDetailPage() {
               <button 
                 onClick={handleStartCampaign}
                 disabled={startingCampaign}
-                className="px-8 py-4 rounded-2xl bg-white text-zinc-950 font-bold text-sm uppercase tracking-widest hover:bg-zinc-200 transition-all shadow-[0_0_30px_rgba(255,255,255,0.1)] disabled:opacity-50"
+                className="px-8 py-4 rounded-2xl bg-white text-zinc-950 font-bold text-sm uppercase tracking-widest hover:bg-zinc-200 transition-all shadow-[0_0_30px_rgba(255,255,255,0.1)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-3"
               >
-                {startingCampaign ? "Starting Campaign..." : "Initiate Social Campaign"}
+                {startingCampaign ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Starting...
+                  </>
+                ) : (
+                  "Initiate Social Campaign"
+                )}
               </button>
               <button className="px-8 py-4 rounded-2xl border border-white/10 text-white font-bold text-sm uppercase tracking-widest hover:bg-white/5 transition-all">
                 Edit Creative DNA

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Plus, Music2, Play, MoreHorizontal } from "lucide-react";
 import { SongService } from "@/services/song-service";
+import { AssetService } from "@/services/asset-service";
 import { Song, SongEra } from "@/types";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
@@ -102,7 +103,22 @@ export default function SongsPage() {
             <Link key={song.id} href={`/songs/${song.id}`}>
               <div className="glass border border-white/5 rounded-3xl p-6 group hover:border-white/20 transition-all cursor-pointer">
                 <div className="relative aspect-square rounded-2xl bg-white/5 mb-4 overflow-hidden flex items-center justify-center">
-                   <Music2 className="w-12 h-12 text-white/10 group-hover:scale-110 transition-transform duration-500" />
+                   {song.cover_path ? (
+                     <img 
+                       src={song.cover_path.startsWith('http') ? song.cover_path : AssetService.getPublicUrl(song.cover_path)}
+                       alt={song.title}
+                       className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                       onError={(e) => {
+                         (e.target as HTMLImageElement).style.display = 'none';
+                         const parent = (e.target as HTMLElement).parentElement;
+                         if (parent) {
+                           const icon = parent.querySelector('.placeholder-icon');
+                           if (icon) icon.classList.remove('hidden');
+                         }
+                       }}
+                     />
+                   ) : null}
+                   <Music2 className={`w-12 h-12 text-white/10 group-hover:scale-110 transition-transform duration-500 placeholder-icon ${song.cover_path ? 'hidden' : ''}`} />
                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                      <div className="w-12 h-12 rounded-full bg-white text-zinc-950 flex items-center justify-center translate-y-4 group-hover:translate-y-0 transition-transform">
                        <Play className="w-5 h-5 fill-current" />
