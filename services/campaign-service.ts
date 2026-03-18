@@ -8,10 +8,10 @@ export const CampaignService = {
       .from('campaigns')
       .select('*, songs(*)')
       .eq('is_current', true)
-      .single();
+      .maybeSingle();
     
     if (error) return null;
-    return data as CampaignWithSong;
+    return data as CampaignWithSong | null;
   },
 
   async startNew(songId: string): Promise<string> {

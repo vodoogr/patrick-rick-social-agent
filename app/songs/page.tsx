@@ -7,6 +7,7 @@ import { Song, SongEra } from "@/types";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { AuthDebug } from "@/components/ui/AuthDebug";
 import Link from "next/link";
 
 const eraColors: Record<SongEra, string> = {
@@ -34,10 +35,17 @@ export default function SongsPage() {
     async function fetchSongs() {
       try {
         setLoading(true);
+        setError(null);
+        console.log("Fetching songs...");
         const data = await SongService.getAll();
+        console.log("Songs fetched:", data.length);
         setSongs(data);
+        if (data.length === 0) {
+          console.warn("No songs returned from service. Check RLS or database content.");
+        }
       } catch (err: any) {
-        setError(err.message || "Failed to load songs");
+        console.error("Error in SongsPage fetchSongs:", err);
+        setError(err.message || JSON.stringify(err) || "Failed to load songs");
       } finally {
         setLoading(false);
       }
@@ -56,6 +64,12 @@ export default function SongsPage() {
         <div>
           <h2 className="text-3xl font-bold tracking-tight">Song Library</h2>
           <p className="text-white/40 text-sm mt-1">Manage your repertoire and start new campaigns.</p>
+          {error && (
+            <div className="mt-4 p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-500 text-xs font-mono">
+              <p className="font-bold mb-1 underline">QUERY ERROR DETECTED:</p>
+              {error}
+            </div>
+          )}
         </div>
         <button className="h-11 px-6 rounded-2xl bg-white text-zinc-950 text-sm font-bold flex items-center gap-2 hover:bg-zinc-200 transition-all uppercase tracking-widest">
           <Plus className="w-5 h-5" />
@@ -122,6 +136,7 @@ export default function SongsPage() {
           action={!filter ? { label: "Import Music", onClick: () => {} } : undefined}
         />
       )}
+      <AuthDebug />
     </div>
   );
 }
