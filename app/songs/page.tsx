@@ -8,7 +8,6 @@ import { Song, SongEra } from "@/types";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { AuthDebug } from "@/components/ui/AuthDebug";
 import Link from "next/link";
 
 const eraColors: Record<SongEra, string> = {
@@ -152,7 +151,6 @@ export default function SongsPage() {
           action={!filter ? { label: "Import Music", onClick: () => {} } : undefined}
         />
       )}
-      <AuthDebug />
     </div>
   );
 }
