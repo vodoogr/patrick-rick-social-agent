@@ -51,3 +51,8 @@ export enum AssetType {
   OTHER = 'other',
 }
 
+export enum ReleaseStatus {
+  RELEASED = 'released',
+  UNRELEASED = 'unreleased',
+  SINGLE = 'single',
+}

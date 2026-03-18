@@ -4,11 +4,40 @@ import {
   PostStatus, 
   PublishMode, 
   PlatformName, 
-  AssetType 
+  AssetType,
+  ReleaseStatus
 } from './enums';
 
+// =========================================
+// Creative DNA Interfaces
+// =========================================
+
+export interface AlbumCreativeDNA {
+  narrative_summary?: string;
+  visual_identity?: string;
+  canonical_phrase?: string;
+  visual_keywords?: string[];
+  emotional_direction?: string;
+  prompt_notes?: string;
+}
+
+export interface SongCreativeDNA {
+  emotional_summary?: string;
+  visual_identity?: string;
+  canonical_phrase?: string;
+  themes?: string[];
+  symbolism?: string[];
+  visual_keywords?: string[];
+  campaign_tone?: string;
+  prompt_notes?: string;
+}
+
+// =========================================
+// Core Entities
+// =========================================
+
 export interface Profile {
-  id: string; // uuid
+  id: string;
   display_name: string | null;
   email: string | null;
   timezone: string;
@@ -16,13 +45,36 @@ export interface Profile {
   updated_at: string;
 }
 
-export interface Song {
-  id: string; // uuid
-  owner_id: string; // uuid
+export interface Album {
+  id: string;
+  owner_id: string;
   title: string;
   slug: string;
   era: SongEra;
-  album: string | null;
+  cover_path: string | null;
+  description: string | null;
+  release_year: number | null;
+  sort_order: number;
+  is_active: boolean;
+  creative_dna: AlbumCreativeDNA;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AlbumWithSongs extends Album {
+  songs?: Song[];
+}
+
+export interface Song {
+  id: string;
+  owner_id: string;
+  title: string;
+  slug: string;
+  era: SongEra;
+  album: string | null; // legacy text column
+  album_id: string | null;
+  track_number: number | null;
+  release_status: ReleaseStatus;
   emotional_summary: string | null;
   visual_identity: string | null;
   canonical_phrase: string | null;
@@ -31,12 +83,17 @@ export interface Song {
   spotify_url: string | null;
   youtube_url: string | null;
   is_active: boolean;
+  creative_dna: SongCreativeDNA;
   created_at: string;
   updated_at: string;
 }
 
+export interface SongWithAlbum extends Song {
+  albums?: Album;
+}
+
 export interface PostAngle {
-  id: string; // uuid
+  id: string;
   code: string;
   label: string;
   description: string | null;
@@ -46,12 +103,12 @@ export interface PostAngle {
 }
 
 export interface Campaign {
-  id: string; // uuid
-  owner_id: string; // uuid
-  song_id: string; // uuid
+  id: string;
+  owner_id: string;
+  song_id: string;
   status: CampaignStatus;
   day_number: number;
-  start_date: string | null; // date
+  start_date: string | null;
   last_generated_at: string | null;
   last_published_at: string | null;
   is_current: boolean;
@@ -65,17 +122,17 @@ export interface CampaignWithSong extends Campaign {
 }
 
 export interface GeneratedPost {
-  id: string; // uuid
-  owner_id: string; // uuid
-  campaign_id: string; // uuid
-  song_id: string; // uuid
-  angle_id: string | null; // uuid
+  id: string;
+  owner_id: string;
+  campaign_id: string;
+  song_id: string;
+  angle_id: string | null;
   campaign_day: number;
   title: string | null;
   hook: string | null;
   caption: string | null;
   cta: string | null;
-  hashtags: string | null; // stored as text in this schema
+  hashtags: string | null;
   subtitle_text: string | null;
   thumbnail_concept: string | null;
   video_concept: string | null;
@@ -88,8 +145,8 @@ export interface GeneratedPost {
 }
 
 export interface PostPlatform {
-  id: string; // uuid
-  post_id: string; // uuid
+  id: string;
+  post_id: string;
   platform: PlatformName;
   platform_caption: string | null;
   platform_hashtags: string | null;
@@ -102,38 +159,39 @@ export interface PostPlatform {
 }
 
 export interface PublishLog {
-  id: string; // uuid
-  owner_id: string; // uuid
-  post_id: string | null; // uuid
-  post_platform_id: string | null; // uuid
+  id: string;
+  owner_id: string;
+  post_id: string | null;
+  post_platform_id: string | null;
   platform: PlatformName | null;
   success: boolean;
   response_code: number | null;
   response_message: string | null;
-  raw_response: any; // jsonb
+  raw_response: any;
   attempted_at: string;
 }
 
 export interface Asset {
-  id: string; // uuid
-  owner_id: string; // uuid
-  song_id: string | null; // uuid
-  campaign_id: string | null; // uuid
-  post_id: string | null; // uuid
+  id: string;
+  owner_id: string;
+  song_id: string | null;
+  album_id: string | null;
+  campaign_id: string | null;
+  post_id: string | null;
   asset_type: AssetType;
   storage_path: string;
   file_name: string | null;
   mime_type: string | null;
   size_bytes: number | null;
-  metadata: any; // jsonb
+  metadata: any;
   created_at: string;
 }
 
 export interface AppSettings {
-  id: string; // uuid
-  owner_id: string; // uuid
+  id: string;
+  owner_id: string;
   publish_mode: PublishMode;
-  daily_post_time: string; // time
+  daily_post_time: string;
   timezone: string;
   enable_tiktok: boolean;
   enable_instagram_reels: boolean;
@@ -144,5 +202,3 @@ export interface AppSettings {
   created_at: string;
   updated_at: string;
 }
-
-
