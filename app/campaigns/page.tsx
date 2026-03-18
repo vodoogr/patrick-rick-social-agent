@@ -4,12 +4,13 @@ import { useEffect, useState, useCallback } from "react";
 import { Target, Play, Pause, RefreshCw, ChevronRight, LayoutList, CheckCircle2 } from "lucide-react";
 import { CampaignService } from "@/services/campaign-service";
 import { PostService } from "@/services/post-service";
-import { Campaign, GeneratedPost, CampaignStatus, SongEra } from "@/types";
+import { Campaign, GeneratedPost, CampaignStatus, SongEra, CampaignWithSong } from "@/types";
 import { CampaignEngine } from "@/services/campaign-engine";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { EmptyState } from "@/components/ui/EmptyState";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 const eraColors: Record<string, string> = {
   [SongEra.BLUE]: "bg-blue-500",
@@ -20,8 +21,9 @@ const eraColors: Record<string, string> = {
 };
 
 export default function CampaignsPage() {
-  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [activeCampaign, setActiveCampaign] = useState<Campaign | null>(null);
+  const router = useRouter();
+  const [campaigns, setCampaigns] = useState<CampaignWithSong[]>([]);
+  const [activeCampaign, setActiveCampaign] = useState<CampaignWithSong | null>(null);
   const [queue, setQueue] = useState<GeneratedPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

@@ -1,8 +1,8 @@
 import { createClient } from '@/lib/supabase/client';
-import { Campaign, CampaignStatus } from '@/types';
+import { Campaign, CampaignStatus, CampaignWithSong } from '@/types';
 
 export const CampaignService = {
-  async getActive(): Promise<Campaign | null> {
+  async getActive(): Promise<CampaignWithSong | null> {
     const supabase = createClient();
     const { data, error } = await supabase
       .from('campaigns')
@@ -11,7 +11,7 @@ export const CampaignService = {
       .single();
     
     if (error) return null;
-    return data as any;
+    return data as CampaignWithSong;
   },
 
   async startNew(songId: string): Promise<string> {
@@ -26,7 +26,7 @@ export const CampaignService = {
     return data; // Returns the new campaign ID
   },
 
-  async getAll(): Promise<Campaign[]> {
+  async getAll(): Promise<CampaignWithSong[]> {
     const supabase = createClient();
     const { data, error } = await supabase
       .from('campaigns')
@@ -34,7 +34,7 @@ export const CampaignService = {
       .order('created_at', { ascending: false });
     
     if (error) throw error;
-    return data as any;
+    return data as CampaignWithSong[];
   },
 
   async updateStatus(id: string, status: CampaignStatus): Promise<void> {
