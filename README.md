@@ -71,3 +71,19 @@ Next session:
 - validate angle rotation
 - validate complete campaign flow
 - then design Albums + Creative DNA system
+## Current checkpoint
+
+Working:
+- Supabase connected
+- Auth working
+- Songs visible by authenticated user
+- Campaign engine validated end to end
+- Albums foundation created
+- Example album creation working
+- Creative DNA editable foundation working
+
+Next:
+- expand catalog structure
+- improve album/song detail pages
+- prepare Drive import strategy
+- add richer asset management
