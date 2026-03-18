@@ -60,6 +60,10 @@ export interface Campaign {
   updated_at: string;
 }
 
+export interface CampaignWithSong extends Campaign {
+  songs?: Song;
+}
+
 export interface GeneratedPost {
   id: string; // uuid
   owner_id: string; // uuid

@@ -1,4 +1,5 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 
 export function createClient() {
@@ -40,11 +41,8 @@ export function createClient() {
  * USE WITH CAUTION.
  */
 export function createAdminClient() {
-  return createServerClient(
+  return createSupabaseClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    {
-      cookies: {}, // No cookies for admin/background operations
-    }
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 }

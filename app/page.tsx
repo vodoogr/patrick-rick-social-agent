@@ -15,7 +15,7 @@ import {
 import { CampaignService } from "@/services/campaign-service";
 import { PostService } from "@/services/post-service";
 import { SongService } from "@/services/song-service";
-import { Campaign, GeneratedPost, Song } from "@/types";
+import { Campaign, GeneratedPost, Song, CampaignWithSong } from "@/types";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -23,7 +23,7 @@ import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 
 export default function Dashboard() {
-  const [activeCampaign, setActiveCampaign] = useState<any | null>(null);
+  const [activeCampaign, setActiveCampaign] = useState<CampaignWithSong | null>(null);
   const [posts, setPosts] = useState<GeneratedPost[]>([]);
   const [discoverySongs, setDiscoverySongs] = useState<Song[]>([]);
   const [loading, setLoading] = useState(true);
