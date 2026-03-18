@@ -21,6 +21,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { EmptyState } from "@/components/ui/EmptyState";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
+import { AuthDebug } from "@/components/ui/AuthDebug";
 
 export default function Dashboard() {
   const [activeCampaign, setActiveCampaign] = useState<CampaignWithSong | null>(null);
@@ -219,6 +220,7 @@ export default function Dashboard() {
             </div>
         </div>
       </div>
+      <AuthDebug />
     </div>
   );
 }
