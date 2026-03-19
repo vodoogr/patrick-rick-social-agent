@@ -71,7 +71,7 @@ export default function AlbumsPage() {
       } as any);
 
       // 2. Link a song (try to find 'Warmth of Sin')
-      const songs = await SongService.search("Warmth");
+      const { songs } = await SongService.search("Warmth");
       if (songs.length > 0) {
         await SongService.update(songs[0].id, { 
           album_id: album.id,

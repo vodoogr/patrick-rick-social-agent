@@ -142,11 +142,12 @@ export default function AlbumDetailPage() {
                         {song.emotional_summary || song.creative_dna?.emotional_summary || "—"}
                       </p>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className={`w-2 h-2 rounded-full ${song.audio_path ? 'bg-green-500' : 'bg-white/10'}`} title={song.audio_path ? 'Audio available' : 'No audio'} />
-                      <span className={`w-2 h-2 rounded-full ${song.cover_path ? 'bg-blue-500' : 'bg-white/10'}`} title={song.cover_path ? 'Cover available' : 'No cover'} />
+                    <div className="flex-shrink-0">
+                      <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 group-hover:bg-white group-hover:text-zinc-950 transition-all text-[10px] font-bold uppercase tracking-widest text-white/50">
+                        <Target className="w-3 h-3" />
+                        Campaign
+                      </button>
                     </div>
-                    <Target className="w-4 h-4 text-white/20 group-hover:text-white transition-colors flex-shrink-0" />
                   </div>
                 </Link>
               ))}
