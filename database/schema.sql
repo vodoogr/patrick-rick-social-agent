@@ -139,6 +139,7 @@ create table if not exists public.songs (
   cover_path text,
   spotify_url text,
   youtube_url text,
+  drive_file_id text,
   is_active boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -304,6 +305,7 @@ create table if not exists public.assets (
   file_name text,
   mime_type text,
   size_bytes bigint,
+  external_source_url text,
   metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
 );

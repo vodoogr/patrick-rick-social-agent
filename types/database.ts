@@ -54,6 +54,7 @@ export interface Album {
   cover_path: string | null;
   description: string | null;
   release_year: number | null;
+  drive_folder_id: string | null;
   sort_order: number;
   is_active: boolean;
   creative_dna: AlbumCreativeDNA;
@@ -82,6 +83,7 @@ export interface Song {
   cover_path: string | null;
   spotify_url: string | null;
   youtube_url: string | null;
+  drive_file_id: string | null;
   is_active: boolean;
   creative_dna: SongCreativeDNA;
   created_at: string;
@@ -183,6 +185,7 @@ export interface Asset {
   file_name: string | null;
   mime_type: string | null;
   size_bytes: number | null;
+  external_source_url: string | null;
   metadata: any;
   created_at: string;
 }

@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/client';
 import { Song, SongWithAlbum, SongCreativeDNA, SongEra, Campaign, GeneratedPost } from '@/types';
+import { CampaignStatus } from '@/types/enums';
 
 const PAGE_SIZE = 24;
 
@@ -51,15 +52,28 @@ export const SongService = {
     return data;
   },
 
-  async search(query: string, filters?: { era?: SongEra; albumId?: string; page?: number }): Promise<{ songs: Song[]; total: number }> {
+  async search(query: string, filters?: { era?: SongEra; albumId?: string; campaignStatus?: CampaignStatus; page?: number }): Promise<{ songs: Song[]; total: number }> {
     const supabase = createClient();
     const page = filters?.page ?? 0;
 
     let q = supabase
       .from('songs')
       .select('*', { count: 'exact' })
-      .order('created_at', { ascending: false })
-      .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+      .order('created_at', { ascending: false });
+
+    if (filters?.campaignStatus) {
+      const { data: campData } = await supabase.from('campaigns')
+        .select('song_id')
+        .eq('status', filters.campaignStatus)
+        .eq('is_current', true);
+      const songIds = campData?.map((c: any) => c.song_id) || [];
+      if (songIds.length === 0) {
+        return { songs: [], total: 0 };
+      }
+      q = q.in('id', songIds);
+    }
+
+    q = q.range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 
     if (query) {
       q = q.ilike('title', `%${query}%`);
