@@ -59,6 +59,19 @@ export const AssetService = {
 
     if (error) throw error;
     return data;
+  },
+
+  async create(assetData: Partial<Asset>): Promise<Asset> {
+    const supabase = createClient();
+    
+    const { data, error } = await supabase
+      .from('assets')
+      .insert(assetData)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data as Asset;
   }
 };
 

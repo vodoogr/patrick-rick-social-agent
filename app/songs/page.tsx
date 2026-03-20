@@ -71,10 +71,10 @@ export default function SongsPage() {
             </div>
           )}
         </div>
-        <button className="h-11 px-6 rounded-2xl bg-white text-zinc-950 text-sm font-bold flex items-center gap-2 hover:bg-zinc-200 transition-all uppercase tracking-widest">
+        <Link href="/import" className="h-11 px-6 rounded-2xl bg-white text-zinc-950 text-sm font-bold flex items-center gap-2 hover:bg-zinc-200 transition-all uppercase tracking-widest">
           <Plus className="w-5 h-5" />
           Import Music
-        </button>
+        </Link>
       </div>
 
       <div className="flex items-center gap-2 pb-2 overflow-x-auto no-scrollbar">
@@ -148,7 +148,7 @@ export default function SongsPage() {
           icon={Music2} 
           title="No songs found" 
           description={filter ? `No songs found for the ${filter} era in your library.` : "Your library is currently empty. Import your first track to get started."}
-          action={!filter ? { label: "Import Music", onClick: () => {} } : undefined}
+          action={!filter ? { label: "Import Music", onClick: () => window.location.href = '/import' } : undefined}
         />
       )}
     </div>
