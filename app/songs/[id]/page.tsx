@@ -17,6 +17,8 @@ import {
   Clock,
   Disc3,
   CheckCircle2,
+  Edit3,
+  Check
 } from "lucide-react";
 import { SongService } from "@/services/song-service";
 import { AssetService } from "@/services/asset-service";
@@ -55,6 +57,20 @@ export default function SongDetailPage() {
   const [startingCampaign, setStartingCampaign] = useState(false);
   const [imgError, setImgError] = useState(false);
   const [activeTab, setActiveTab] = useState<"assets" | "campaigns" | "posts">("assets");
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editTrackNumber, setEditTrackNumber] = useState<number | "">("");
+  const [editEra, setEditEra] = useState<SongEra | "">("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (song) {
+      setEditTitle(song.title);
+      setEditTrackNumber(song.track_number ?? "");
+      setEditEra(song.era || "");
+    }
+  }, [song]);
 
   useEffect(() => {
     async function fetchData() {
@@ -100,6 +116,25 @@ export default function SongDetailPage() {
     }
   };
 
+  const handleSave = async () => {
+    if (!song) return;
+    try {
+      setSaving(true);
+      const updated = await SongService.update(song.id, {
+        title: editTitle,
+        track_number: editTrackNumber === "" ? null : editTrackNumber,
+        era: editEra === "" ? undefined : editEra as SongEra
+      });
+      setSong({ ...song, ...updated });
+      setIsEditing(false);
+    } catch (err: any) {
+      console.error(err);
+      alert("Failed to update song");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (loading) return <LoadingState />;
   if (error) return <ErrorState error={error} onRetry={() => window.location.reload()} />;
   if (!song) return null;
@@ -133,10 +168,18 @@ export default function SongDetailPage() {
           )}
         </div>
         <div className="flex items-center gap-3">
-          <button className="p-3 rounded-xl glass border border-white/5 hover:bg-white/5 transition-colors">
+          <button
+            onClick={() => isEditing ? handleSave() : setIsEditing(true)}
+            disabled={saving}
+            className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold uppercase tracking-widest transition-colors flex items-center gap-2"
+          >
+            {saving ? <Loader2 className="w-3 h-3 animate-spin"/> : (isEditing ? <Check className="w-3 h-3" /> : <Edit3 className="w-3 h-3" />)}
+            {isEditing ? "Save" : "Edit"}
+          </button>
+          <button className="p-3 rounded-xl glass border border-white/5 hover:bg-white/5 transition-colors hidden sm:block">
             <Share2 className="w-4 h-4" />
           </button>
-          <button className="p-3 rounded-xl glass border border-white/5 hover:bg-white/5 transition-colors">
+          <button className="p-3 rounded-xl glass border border-white/5 hover:bg-white/5 transition-colors hidden sm:block">
             <MoreVertical className="w-4 h-4" />
           </button>
         </div>
@@ -168,9 +211,20 @@ export default function SongDetailPage() {
           <div className="lg:col-span-8 space-y-6">
             <div className="space-y-2">
               <div className="flex items-center gap-3 flex-wrap">
-                <span className="px-3 py-1 rounded-full bg-white/10 border border-white/10 text-[10px] font-bold uppercase tracking-[0.2em]">
-                  {song.era} ERA
-                </span>
+                {isEditing ? (
+                  <select
+                    value={editEra}
+                    onChange={e => setEditEra(e.target.value as SongEra)}
+                    className="bg-transparent border border-white/20 rounded-md px-2 py-1 text-[10px] uppercase font-bold text-white focus:outline-none"
+                  >
+                    {Object.values(SongEra).map(era => <option key={era} value={era} className="bg-zinc-900">{era}</option>)}
+                  </select>
+                ) : (
+                  <span className="px-3 py-1 rounded-full bg-white/10 border border-white/10 text-[10px] font-bold uppercase tracking-[0.2em]">
+                    {song.era} ERA
+                  </span>
+                )}
+                
                 {song.albums ? (
                   <Link href={`/albums/${song.album_id}`} className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-[10px] font-bold uppercase tracking-[0.1em] text-white/50 hover:text-white transition-colors">
                     <Disc3 className="w-3 h-3" />
@@ -181,11 +235,34 @@ export default function SongDetailPage() {
                     Album: {song.album}
                   </span>
                 ) : null}
-                {song.track_number && (
-                  <span className="text-white/30 text-[10px] font-bold">Track #{song.track_number}</span>
+
+                {isEditing ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-white/30 text-[10px] font-bold">Track #</span>
+                    <input 
+                      type="number" 
+                      value={editTrackNumber} 
+                      onChange={e => setEditTrackNumber(e.target.value ? parseInt(e.target.value) : "")}
+                      className="bg-transparent border-b border-white/20 w-12 text-white text-[10px] font-bold focus:outline-none focus:border-white text-center"
+                    />
+                  </div>
+                ) : (
+                  song.track_number && (
+                    <span className="text-white/30 text-[10px] font-bold">Track #{song.track_number}</span>
+                  )
                 )}
               </div>
-              <h1 className="text-5xl md:text-7xl font-bold tracking-tighter leading-none">{song.title}</h1>
+              
+              {isEditing ? (
+                <input 
+                  type="text" 
+                  value={editTitle}
+                  onChange={e => setEditTitle(e.target.value)}
+                  className="bg-transparent border-b border-white/20 w-full text-5xl md:text-7xl font-bold tracking-tighter leading-none focus:outline-none focus:border-white"
+                />
+              ) : (
+                <h1 className="text-5xl md:text-7xl font-bold tracking-tighter leading-none">{song.title}</h1>
+              )}
             </div>
 
             <p className="text-xl text-white/70 max-w-2xl leading-relaxed italic font-serif">

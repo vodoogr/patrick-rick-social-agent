@@ -11,8 +11,12 @@ import {
   Calendar,
   FileAudio,
   Image as ImageIcon,
+  Edit3,
+  Check,
+  Loader2
 } from "lucide-react";
 import { AlbumService } from "@/services/album-service";
+import { SongService } from "@/services/song-service";
 import { AssetService } from "@/services/asset-service";
 import { AlbumWithSongs, SongEra } from "@/types";
 import { LoadingState } from "@/components/ui/LoadingState";
@@ -35,6 +39,20 @@ export default function AlbumDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [imgError, setImgError] = useState(false);
 
+  const [isEditing, setIsEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editYear, setEditYear] = useState<number | "">("");
+  const [editEra, setEditEra] = useState<SongEra | "">("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (album) {
+      setEditTitle(album.title);
+      setEditYear(album.release_year || "");
+      setEditEra(album.era || "");
+    }
+  }, [album]);
+
   useEffect(() => {
     async function fetchAlbum() {
       try {
@@ -53,9 +71,40 @@ export default function AlbumDetailPage() {
     fetchAlbum();
   }, [id]);
 
-  if (loading) return <LoadingState />;
+  if (loading && !album) return <LoadingState />;
   if (error) return <ErrorState error={error} onRetry={() => window.location.reload()} />;
   if (!album) return null;
+
+  const handleSave = async () => {
+    if (!album) return;
+    try {
+      setSaving(true);
+      const newEra = editEra === "" ? undefined : editEra as SongEra;
+      const updated = await AlbumService.update(album.id, {
+        title: editTitle,
+        release_year: editYear === "" ? null : editYear,
+        era: newEra
+      } as any);
+
+      let updatedSongs = album.songs || [];
+      if (newEra && newEra !== album.era) {
+        // Cascade era update to all tracks
+        updatedSongs = await Promise.all(
+          updatedSongs.map(async (song) => {
+            return await SongService.update(song.id, { era: newEra });
+          })
+        );
+      }
+
+      setAlbum({ ...album, ...updated, songs: updatedSongs });
+      setIsEditing(false);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to update album");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const songs = album.songs || [];
 
@@ -67,6 +116,14 @@ export default function AlbumDetailPage() {
           <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
           <span className="text-xs font-bold uppercase tracking-widest">Back to Albums</span>
         </Link>
+        <button
+          onClick={() => isEditing ? handleSave() : setIsEditing(true)}
+          disabled={saving}
+          className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold uppercase tracking-widest transition-colors flex items-center gap-2"
+        >
+          {saving ? <Loader2 className="w-3 h-3 animate-spin"/> : (isEditing ? <Check className="w-3 h-3" /> : <Edit3 className="w-3 h-3" />)}
+          {isEditing ? "Save Changes" : "Edit Metadata"}
+        </button>
       </div>
 
       {/* Hero */}
@@ -90,16 +147,47 @@ export default function AlbumDetailPage() {
           <div className="lg:col-span-8 space-y-6">
             <div className="space-y-2">
               <div className="flex items-center gap-3">
-                <span className="px-3 py-1 rounded-full bg-white/10 border border-white/10 text-[10px] font-bold uppercase tracking-[0.2em]">
-                  {album.era} ERA
-                </span>
-                {album.release_year && (
-                  <span className="text-white/40 text-[10px] font-bold uppercase tracking-[0.1em]">
-                    {album.release_year}
+                {isEditing ? (
+                  <select
+                    value={editEra}
+                    onChange={e => setEditEra(e.target.value as SongEra)}
+                    className="bg-transparent border border-white/20 rounded-md px-2 py-1 text-[10px] uppercase font-bold text-white focus:outline-none"
+                  >
+                    {Object.values(SongEra).map(era => <option key={era} value={era} className="bg-zinc-900">{era}</option>)}
+                  </select>
+                ) : (
+                  <span className="px-3 py-1 rounded-full bg-white/10 border border-white/10 text-[10px] font-bold uppercase tracking-[0.2em]">
+                    {album.era} ERA
                   </span>
                 )}
+                
+                {isEditing ? (
+                  <input 
+                    type="number" 
+                    value={editYear} 
+                    onChange={e => setEditYear(e.target.value ? parseInt(e.target.value) : "")}
+                    placeholder="Year"
+                    className="bg-transparent border-b border-white/20 w-16 text-white/40 text-[10px] font-bold uppercase tracking-[0.1em] focus:outline-none focus:border-white"
+                  />
+                ) : (
+                  album.release_year && (
+                    <span className="text-white/40 text-[10px] font-bold uppercase tracking-[0.1em]">
+                      {album.release_year}
+                    </span>
+                  )
+                )}
               </div>
-              <h1 className="text-5xl md:text-7xl font-bold tracking-tighter leading-none">{album.title}</h1>
+              
+              {isEditing ? (
+                <input 
+                  type="text" 
+                  value={editTitle}
+                  onChange={e => setEditTitle(e.target.value)}
+                  className="bg-transparent border-b border-white/20 w-full text-5xl md:text-7xl font-bold tracking-tighter leading-none focus:outline-none focus:border-white"
+                />
+              ) : (
+                <h1 className="text-5xl md:text-7xl font-bold tracking-tighter leading-none">{album.title}</h1>
+              )}
             </div>
 
             {album.description && (
@@ -141,6 +229,14 @@ export default function AlbumDetailPage() {
                       <p className="text-[10px] text-white/40 truncate">
                         {song.emotional_summary || song.creative_dna?.emotional_summary || "—"}
                       </p>
+                    </div>
+                    <div className="hidden sm:flex items-center gap-2 px-2">
+                      <span className={`text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full border ${song.audio_path ? 'border-green-500/30 text-green-500/70 bg-green-500/10' : 'border-white/10 text-white/20 bg-white/5'}`}>
+                        Audio {song.audio_path ? '✓' : '✗'}
+                      </span>
+                      <span className={`text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full border ${song.cover_path ? 'border-green-500/30 text-green-500/70 bg-green-500/10' : 'border-white/10 text-white/20 bg-white/5'}`}>
+                        Cover {song.cover_path ? '✓' : '✗'}
+                      </span>
                     </div>
                     <div className="flex-shrink-0">
                       <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 group-hover:bg-white group-hover:text-zinc-950 transition-all text-[10px] font-bold uppercase tracking-widest text-white/50">
