@@ -116,14 +116,23 @@ export default function AlbumDetailPage() {
           <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
           <span className="text-xs font-bold uppercase tracking-widest">Back to Albums</span>
         </Link>
-        <button
-          onClick={() => isEditing ? handleSave() : setIsEditing(true)}
-          disabled={saving}
-          className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold uppercase tracking-widest transition-colors flex items-center gap-2"
-        >
-          {saving ? <Loader2 className="w-3 h-3 animate-spin"/> : (isEditing ? <Check className="w-3 h-3" /> : <Edit3 className="w-3 h-3" />)}
-          {isEditing ? "Save Changes" : "Edit Metadata"}
-        </button>
+        <div className="flex items-center gap-3">
+          <Link
+            href={`/albums/${album.id}/import-dna`}
+            className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/20 border border-white/10 text-xs font-bold uppercase tracking-widest text-emerald-400 group flex items-center gap-2 transition-all hover:scale-105"
+          >
+            <Disc3 className="w-3 h-3 group-hover:animate-spin" />
+            Import DNA
+          </Link>
+          <button
+            onClick={() => isEditing ? handleSave() : setIsEditing(true)}
+            disabled={saving}
+            className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold uppercase tracking-widest transition-colors flex items-center gap-2"
+          >
+            {saving ? <Loader2 className="w-3 h-3 animate-spin"/> : (isEditing ? <Check className="w-3 h-3" /> : <Edit3 className="w-3 h-3" />)}
+            {isEditing ? "Save Changes" : "Edit Metadata"}
+          </button>
+        </div>
       </div>
 
       {/* Hero */}
