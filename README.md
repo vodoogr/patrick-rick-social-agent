@@ -87,3 +87,8 @@ Next:
 - improve album/song detail pages
 - prepare Drive import strategy
 - add richer asset management
+## Next session
+- implement Creative DNA Import
+- add DNA helix import animation
+- support album + song metadata import flow
+- review mapping and create/update/skip behavior
