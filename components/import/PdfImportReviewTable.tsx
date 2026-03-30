@@ -7,9 +7,11 @@ interface ReviewTableProps {
   preview: any; // Using any here for quick dev, adapt to proper Type later
   onUpdateTrackStatus: (index: number, status: 'create' | 'update' | 'skip') => void;
   onUpdateTrackField: (index: number, field: string, value: any) => void;
+  onUpdateAlbumField: (field: string, value: any) => void;
+  allAlbums?: any[];
 }
 
-export function PdfImportReviewTable({ preview, onUpdateTrackStatus, onUpdateTrackField }: ReviewTableProps) {
+export function PdfImportReviewTable({ preview, allAlbums, onUpdateTrackStatus, onUpdateTrackField, onUpdateAlbumField }: ReviewTableProps) {
   if (!preview) return null;
 
   return (
@@ -23,8 +25,25 @@ export function PdfImportReviewTable({ preview, onUpdateTrackStatus, onUpdateTra
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
           <div className="space-y-1">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">Title</span>
-            <p className="font-medium">{preview.albumUpdates.albumTitle || <span className="text-white/30 italic">Not found</span>}</p>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">Link to Album</span>
+            <select
+              className="w-full bg-black/50 border border-white/20 rounded-md px-3 py-2 text-sm font-medium text-white focus:outline-none"
+              value={preview.albumUpdates.existingAlbumId || 'new'}
+              onChange={(e) => onUpdateAlbumField('existingAlbumId', e.target.value)}
+            >
+              <option value="new">-- ✨ Create New Album --</option>
+              {allAlbums?.map(a => (
+                <option key={a.id} value={a.id}>{a.title} ({a.era?.toUpperCase() || 'UNKNOWN'} ERA)</option>
+              ))}
+            </select>
+            {(!preview.albumUpdates.existingAlbumId || preview.albumUpdates.existingAlbumId === 'new') && (
+              <input 
+                className="mt-2 font-medium bg-transparent border-b border-white/20 focus:outline-none focus:border-white w-full" 
+                value={preview.albumUpdates.albumTitle || ''}
+                onChange={(e) => onUpdateAlbumField('albumTitle', e.target.value)}
+                placeholder="New Album Title"
+              />
+            )}
           </div>
           <div className="space-y-1">
             <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">Era</span>

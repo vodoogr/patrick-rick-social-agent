@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { UploadCloud, CheckCircle2, ChevronRight, XCircle } from "lucide-react";
 import { DNAHelixLoader } from "@/components/import/DNAHelixLoader";
 import { PdfImportReviewTable } from "@/components/import/PdfImportReviewTable";
@@ -20,6 +20,11 @@ export default function PdfDnaImportPage() {
   const [preview, setPreview] = useState<any | null>(null);
   const [success, setSuccess] = useState(false);
   const [importedAlbumId, setImportedAlbumId] = useState<string | null>(null);
+  const [allAlbums, setAllAlbums] = useState<any[]>([]);
+
+  useEffect(() => {
+    AlbumService.getAll().then(setAllAlbums).catch(console.error);
+  }, []);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const uploadedFile = e.target.files?.[0];
@@ -37,6 +42,14 @@ export default function PdfDnaImportPage() {
     try {
       const extractedData = await PdfCreativeDnaExtractor.extractTextFromFile(uploadedFile);
       const parsedUpdates = PdfCreativeDnaExtractor.parseExtractedText(extractedData.text);
+      
+      const albumTitle = (parsedUpdates.albumUpdates.albumTitle || '').trim().toLowerCase();
+      let matchedAlbum = allAlbums.find((a: any) => a.title.trim().toLowerCase() === albumTitle);
+      if (!matchedAlbum && albumTitle) {
+          matchedAlbum = allAlbums.find((a: any) => a.title.toLowerCase().includes(albumTitle) || albumTitle.includes(a.title.toLowerCase()));
+      }
+      parsedUpdates.albumUpdates.existingAlbumId = matchedAlbum ? matchedAlbum.id : 'new';
+      
       setPreview(parsedUpdates);
     } catch (err: any) {
       console.error(err);
@@ -60,6 +73,17 @@ export default function PdfDnaImportPage() {
     setPreview({ ...preview, songRows: newRows });
   };
 
+  const handleUpdateAlbumField = (field: string, value: any) => {
+    if (!preview) return;
+    setPreview({
+      ...preview,
+      albumUpdates: {
+        ...preview.albumUpdates,
+        [field]: value
+      }
+    });
+  };
+
   const handleImport = async () => {
     if (!preview) return;
     try {
@@ -74,9 +98,12 @@ export default function PdfDnaImportPage() {
       const validEra = Object.values(SongEra).includes(rawEra) ? rawEra : SongEra.PRESENT;
 
       // Handle Album Creation or Retrieval
-      const albumTitle = preview.albumUpdates.albumTitle || 'Unknown Album';
-      const existingAlbums = await AlbumService.search(albumTitle);
-      let albumToUse = existingAlbums.find(a => a.title.toLowerCase() === albumTitle.toLowerCase());
+      let albumToUse = null;
+      if (preview.albumUpdates.existingAlbumId && preview.albumUpdates.existingAlbumId !== 'new') {
+        albumToUse = await AlbumService.getById(preview.albumUpdates.existingAlbumId);
+      }
+
+      const albumTitle = (preview.albumUpdates.albumTitle || 'Unknown Album').trim();
 
       if (!albumToUse) {
         // Create new Album
@@ -118,8 +145,8 @@ export default function PdfDnaImportPage() {
          if (track.action === 'skip') continue;
 
          // Identify if the song already exists
-         const existingSong = albumSongs.find(s => 
-            s.title.toLowerCase() === (track.songTitle || '').toLowerCase() || 
+         const existingSong = albumSongs.find((s: any) => 
+            s.title.trim().toLowerCase() === (track.songTitle || '').trim().toLowerCase() || 
             (s.track_number !== null && track.trackNumber !== null && s.track_number === track.trackNumber)
          );
 
@@ -255,8 +282,10 @@ export default function PdfDnaImportPage() {
          <div className="animate-in slide-in-from-bottom-8 duration-700">
             <PdfImportReviewTable 
                 preview={preview}
+                allAlbums={allAlbums}
                 onUpdateTrackStatus={handleUpdateTrackStatus}
                 onUpdateTrackField={handleUpdateTrackField}
+                onUpdateAlbumField={handleUpdateAlbumField}
             />
 
             <div className="mt-8 flex items-center justify-end gap-4 pt-6 border-t border-white/10">
