@@ -102,7 +102,7 @@ export default function ImportPage() {
 
       // 2. Handle Cover Asset
       if (preview.coverCandidate) {
-        const coverUrl = preview.coverCandidate.driveFile.thumbnailLink || preview.coverCandidate.driveFile.webContentLink;
+        const coverUrl = `https://drive.google.com/thumbnail?id=${preview.coverCandidate.driveFile.id}&sz=w1000`;
         if (coverUrl) {
           await AlbumService.update(albumId, { cover_path: coverUrl });
         }
@@ -117,6 +117,12 @@ export default function ImportPage() {
           size_bytes: parseInt(preview.coverCandidate.driveFile.size?.toString() || '0', 10) || 0
         });
       }
+
+       let finalEra = SongEra.PRESENT;
+       const fetchedAlbum = await AlbumService.getById(albumId);
+       if (fetchedAlbum && fetchedAlbum.era) {
+          finalEra = fetchedAlbum.era;
+       }
 
       // 3. Create or Update Songs
       for (const track of preview.trackCandidates) {
@@ -136,7 +142,7 @@ export default function ImportPage() {
             track_number: track.inferredTrackNumber ?? 1,
             drive_file_id: track.driveFile.id,
             audio_path: track.driveFile.webContentLink,
-            era: SongEra.PRESENT,
+            era: finalEra,
             release_status: ReleaseStatus.UNRELEASED
           });
         }
@@ -202,8 +208,8 @@ export default function ImportPage() {
             {/* Header: Album mapping */}
             <div className="flex flex-col md:flex-row gap-8 items-start">
               <div className="w-full md:w-48 aspect-square rounded-2xl bg-zinc-800 flex items-center justify-center overflow-hidden border border-white/10">
-                {(preview.coverCandidate?.driveFile.thumbnailLink || preview.coverCandidate?.driveFile.webContentLink) ? (
-                  <img src={preview.coverCandidate.driveFile.thumbnailLink || preview.coverCandidate.driveFile.webContentLink} alt="Cover" className="w-full h-full object-cover" />
+                {preview.coverCandidate ? (
+                  <img src={`https://drive.google.com/thumbnail?id=${preview.coverCandidate.driveFile.id}&sz=w1000`} alt="Cover" className="w-full h-full object-cover" />
                 ) : (
                   <ImageIcon className="w-12 h-12 text-white/20" />
                 )}

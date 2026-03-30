@@ -73,13 +73,25 @@ export default function PdfDnaImportPage() {
       const rawEra = preview.albumUpdates.era?.toLowerCase() as SongEra;
       const validEra = Object.values(SongEra).includes(rawEra) ? rawEra : SongEra.PRESENT;
 
-      // Create new Album
-      const newAlbum = await AlbumService.create({
-        owner_id: profile.id,
-        title: preview.albumUpdates.albumTitle || 'Unknown Album',
-        slug: (preview.albumUpdates.albumTitle || 'album').toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now(),
-        era: validEra,
-      });
+      // Handle Album Creation or Retrieval
+      const albumTitle = preview.albumUpdates.albumTitle || 'Unknown Album';
+      const existingAlbums = await AlbumService.search(albumTitle);
+      let albumToUse = existingAlbums.find(a => a.title.toLowerCase() === albumTitle.toLowerCase());
+
+      if (!albumToUse) {
+        // Create new Album
+        albumToUse = await AlbumService.create({
+          owner_id: profile.id,
+          title: albumTitle,
+          slug: albumTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now(),
+          era: validEra,
+        });
+      } else if (validEra !== SongEra.PRESENT) {
+        // Update era if it's specified in PDF
+        albumToUse = await AlbumService.update(albumToUse.id, { era: validEra });
+      }
+
+      const newAlbumId = albumToUse.id;
 
       // Save Album DNA
       // If we got *any* relevant metadata, save it to the DB
@@ -89,7 +101,7 @@ export default function PdfDnaImportPage() {
         preview.albumUpdates.visualIdentity ||
         preview.albumUpdates.emotionalDirection
       ) {
-        await AlbumService.updateCreativeDNA(newAlbum.id, {
+        await AlbumService.updateCreativeDNA(newAlbumId, {
            narrative_summary: preview.albumUpdates.narrativeSummary,
            canonical_phrase: preview.albumUpdates.canonicalPhrase,
            emotional_direction: preview.albumUpdates.emotionalDirection || preview.albumUpdates.coreEmotion,
@@ -99,34 +111,48 @@ export default function PdfDnaImportPage() {
         });
       }
 
-      // Loop through tracks and create them
+      const albumSongs = await SongService.getByAlbum(newAlbumId);
+
+      // Loop through tracks and create or update them
       for (const track of preview.songRows) {
          if (track.action === 'skip') continue;
 
-         if (track.action === 'create') {
+         // Identify if the song already exists
+         const existingSong = albumSongs.find(s => 
+            s.title.toLowerCase() === (track.songTitle || '').toLowerCase() || 
+            (s.track_number !== null && track.trackNumber !== null && s.track_number === track.trackNumber)
+         );
+
+         let songId = existingSong?.id;
+
+         if (!songId) {
              const newSong = await SongService.create({
                  owner_id: profile.id,
                  title: track.songTitle || 'Untitled Track',
                  slug: (track.songTitle || 'track').toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now(),
-                 album_id: newAlbum.id,
+                 album_id: newAlbumId,
                  track_number: track.trackNumber || 1,
                  era: validEra,
                  release_status: ReleaseStatus.UNRELEASED
              });
-
-             // Apply Creative DNA
-             await SongService.updateCreativeDNA(newSong.id, {
-                 emotional_summary: track.emotionalSummary,
-                 themes: track.themes,
-                 symbolism: track.symbolism,
-                 visual_identity: track.visualIdentity,
-                 campaign_tone: track.campaignTone,
-                 prompt_notes: track.promptNotes
-             });
+             songId = newSong.id;
+         } else {
+             // Optional: update Era if missing or changed
+             await SongService.update(songId, { era: validEra });
          }
+
+         // Apply Creative DNA
+         await SongService.updateCreativeDNA(songId, {
+             emotional_summary: track.emotionalSummary,
+             themes: track.themes,
+             symbolism: track.symbolism,
+             visual_identity: track.visualIdentity,
+             campaign_tone: track.campaignTone,
+             prompt_notes: track.promptNotes
+         });
       }
 
-      setImportedAlbumId(newAlbum.id);
+      setImportedAlbumId(newAlbumId);
       setSuccess(true);
       setPreview(null);
       setFile(null);

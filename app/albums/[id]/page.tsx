@@ -106,6 +106,39 @@ export default function AlbumDetailPage() {
     }
   };
 
+  const forceSaveAndCascade = async () => {
+    if (!album) return;
+    try {
+      setSaving(true);
+      const currentEra = isEditing && editEra !== "" ? (editEra as SongEra) : album.era;
+      
+      const updated = await AlbumService.update(album.id, {
+        title: isEditing ? editTitle : album.title,
+        release_year: isEditing ? (editYear === "" ? null : editYear) : album.release_year,
+        era: currentEra
+      } as any);
+
+      // Force cascade era update to all tracks, even if it didn't change (to fix PRESENT era bugs)
+      let updatedSongs = album.songs || [];
+      if (currentEra) {
+        updatedSongs = await Promise.all(
+          updatedSongs.map(async (song) => {
+            return await SongService.update(song.id, { era: currentEra });
+          })
+        );
+      }
+
+      setAlbum({ ...album, ...updated, songs: updatedSongs });
+      setIsEditing(false);
+      alert("All changes saved! Track eras synchronized.");
+    } catch (err) {
+      console.error(err);
+      alert("Failed to update album");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const songs = album.songs || [];
 
   return (
@@ -118,7 +151,7 @@ export default function AlbumDetailPage() {
         </Link>
         <div className="flex items-center gap-3">
           <Link
-            href={`/albums/${album.id}/import-dna`}
+            href={`/import/pdf-creative-dna`}
             className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/20 border border-white/10 text-xs font-bold uppercase tracking-widest text-emerald-400 group flex items-center gap-2 transition-all hover:scale-105"
           >
             <Disc3 className="w-3 h-3 group-hover:animate-spin" />
@@ -206,9 +239,17 @@ export default function AlbumDetailPage() {
             )}
 
             <div className="flex items-center gap-4 pt-2">
-              <div className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-[10px] font-bold uppercase tracking-widest">
+              <div className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-[10px] font-bold uppercase tracking-widest flex items-center gap-2">
                 {songs.length} {songs.length === 1 ? "Track" : "Tracks"}
               </div>
+              <button 
+                onClick={forceSaveAndCascade}
+                disabled={saving}
+                className="px-6 py-2 rounded-xl bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 text-[10px] font-bold uppercase tracking-widest text-green-300 transition-all flex items-center gap-2 shadow-[0_0_15px_rgba(34,197,94,0.1)] disabled:opacity-50"
+              >
+                {saving ? <Loader2 className="w-3 h-3 animate-spin"/> : <Check className="w-3 h-3" />}
+                {saving ? "Saving..." : "Save Changes"}
+              </button>
             </div>
           </div>
         </div>
