@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Disc3, Music2, Plus, ChevronDown, Check, Filter } from "lucide-react";
+import { Disc3, Music2, Plus, ChevronDown, Check, Filter, Trash2 } from "lucide-react";
 import { AlbumService } from "@/services/album-service";
 import { SongService } from "@/services/song-service";
 import { ProfileService } from "@/services/profile-service";
@@ -47,6 +47,19 @@ export default function AlbumsPage() {
     }
     fetchAlbums();
   }, [eraFilter]);
+
+  const handleDelete = async (e: React.MouseEvent, id: string, title: string) => {
+    e.preventDefault();
+    if (!confirm(`Are you sure you want to delete the album "${title}"?`)) return;
+    
+    try {
+      await AlbumService.delete(id);
+      setAlbums(prev => prev.filter(a => a.id !== id));
+    } catch (err) {
+      console.error("Error deleting album:", err);
+      alert("Failed to delete album.");
+    }
+  };
 
   const handleCreateExample = async () => {
     try {
@@ -154,6 +167,13 @@ export default function AlbumsPage() {
                       {album.era} Era
                     </span>
                   </div>
+                  <button
+                    onClick={(e) => handleDelete(e, album.id, album.title)}
+                    className="absolute top-4 right-4 p-2 rounded-full bg-black/40 backdrop-blur-sm border border-white/10 text-white/50 hover:text-red-500 hover:bg-red-500/20 transition-all opacity-0 group-hover:opacity-100 z-10"
+                    title="Delete Album"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
                 <div className="p-6 space-y-2">
                   <h3 className="text-lg font-bold tracking-tight truncate">{album.title}</h3>

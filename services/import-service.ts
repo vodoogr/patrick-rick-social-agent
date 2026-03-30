@@ -31,8 +31,11 @@ export const ImportService = {
     // Determine Cover Candidate
     let coverCandidate: CoverCandidate | null = null;
     if (imageFiles.length > 0) {
-      // Find one named "cover" or take the first
-      const exactCover = imageFiles.find(i => i.name.toLowerCase().includes('cover'));
+      // Find one named "cover", "front", "caratula" or take the first
+      const exactCover = imageFiles.find(i => {
+         const n = i.name.toLowerCase();
+         return n.includes('cover') || n.includes('front') || n.includes('caratula') || n.includes('carátula') || n.includes('art');
+      });
       coverCandidate = {
         driveFile: exactCover || imageFiles[0],
         isConfirmed: true
@@ -53,10 +56,17 @@ export const ImportService = {
       let title = file.name.replace(/\.(mp3|wav|flac|m4a)$/i, '');
 
       // Try to extract initial numbers
-      const match = title.match(/^0*(\d+)[\s-_\.]+(.*)$/);
+      // Try to extract initial numbers, allowing for prepended folder names like "Bonus - 01 - Track"
+      const match = title.match(/(?:.*-\s*)?0*(\d+)[\s-_\.]+(.*)$/);
       if (match) {
         trackNum = parseInt(match[1], 10);
         title = match[2].trim();
+      }
+      
+      const isSpecial = file.name.toLowerCase().match(/(bonus|special|extra)/);
+      if (isSpecial) {
+         if (trackNum !== null) trackNum += 100; // force to end
+         else trackNum = 999;
       }
 
       return {

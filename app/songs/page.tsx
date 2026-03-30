@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, Music2, Play, MoreHorizontal } from "lucide-react";
+import { Plus, Music2, Play, MoreHorizontal, Trash2 } from "lucide-react";
 import { SongService } from "@/services/song-service";
 import { AssetService } from "@/services/asset-service";
 import { Song, SongEra } from "@/types";
@@ -52,6 +52,19 @@ export default function SongsPage() {
     }
     fetchSongs();
   }, []);
+
+  const handleDelete = async (e: React.MouseEvent, id: string, title: string) => {
+    e.preventDefault();
+    if (!confirm(`Are you sure you want to delete the song "${title}"?`)) return;
+    
+    try {
+      await SongService.delete(id);
+      setSongs(prev => prev.filter(s => s.id !== id));
+    } catch (err: any) {
+      console.error("Error deleting song:", err);
+      alert("Failed to delete song.");
+    }
+  };
 
   const filteredSongs = filter ? songs.filter(s => s.era === filter) : songs;
 
@@ -125,9 +138,16 @@ export default function SongsPage() {
                    </div>
                 </div>
                 <div className="space-y-1">
-                   <div className="flex items-center justify-between">
-                     <h4 className="font-bold text-sm truncate">{song.title}</h4>
-                     <MoreHorizontal className="w-4 h-4 text-white/30" />
+                   <div className="flex items-center justify-between relative group/header">
+                     <h4 className="font-bold text-sm truncate pr-6">{song.title}</h4>
+                     
+                     <button
+                        onClick={(e) => handleDelete(e, song.id, song.title)}
+                        className="absolute right-0 top-1/2 -translate-y-1/2 p-2 rounded-full bg-black/40 backdrop-blur-sm border border-white/10 text-white/50 hover:text-red-500 hover:bg-red-500/20 transition-all opacity-0 group-hover/header:opacity-100 z-10"
+                        title="Delete Song"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                    </div>
                    <p className="text-[10px] text-white/40 uppercase tracking-widest font-bold">
                      {song.era} Era {song.album ? `• ${song.album}` : ''}

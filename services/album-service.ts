@@ -93,5 +93,22 @@ export const AlbumService = {
     
     if (error) throw error;
     return count || 0;
+  },
+
+  async delete(id: string): Promise<void> {
+    const supabase = createClient();
+    
+    // Eliminar las canciones vinculadas a este álbum primero (si no hay CASCADE en DB)
+    await supabase
+      .from('songs')
+      .delete()
+      .eq('album_id', id);
+      
+    const { error } = await supabase
+      .from('albums')
+      .delete()
+      .eq('id', id);
+    
+    if (error) throw error;
   }
 };

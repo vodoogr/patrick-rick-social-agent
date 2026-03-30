@@ -158,5 +158,15 @@ export const SongService = {
       .eq('id', id);
     
     if (error) throw error;
+  },
+
+  async delete(id: string): Promise<void> {
+    const supabase = createClient();
+    const { error } = await supabase
+      .from('songs')
+      .delete()
+      .eq('id', id);
+    
+    if (error) throw error;
   }
 };

@@ -20,9 +20,6 @@ export const DriveService = {
     return await response.json();
   },
 
-  /**
-   * List all files inside a folder.
-   */
   async getFolderContents(folderId: string): Promise<DriveFile[]> {
     const apiKey = process.env.GOOGLE_DRIVE_API_KEY;
     if (!apiKey) throw new Error("GOOGLE_DRIVE_API_KEY is not configured in .env");
@@ -39,6 +36,26 @@ export const DriveService = {
     }
 
     const data = await response.json();
-    return data.files || [];
+    let allFiles: DriveFile[] = data.files || [];
+    
+    // Handle recursive folders natively
+    const subfolders = allFiles.filter(f => f.mimeType === 'application/vnd.google-apps.folder');
+    const flatFiles = allFiles.filter(f => f.mimeType !== 'application/vnd.google-apps.folder');
+    
+    // Let's recurse for any subfolders found
+    const nestedPromises = subfolders.map(async sub => {
+       const children = await DriveService.getFolderContents(sub.id);
+       children.forEach(c => {
+         c.name = `${sub.name} - ${c.name}`;
+       });
+       return children;
+    });
+    const nestedResults = await Promise.all(nestedPromises);
+    
+    for (const res of nestedResults) {
+       flatFiles.push(...res);
+    }
+    
+    return flatFiles;
   }
 };

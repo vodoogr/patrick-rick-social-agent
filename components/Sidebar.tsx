@@ -34,6 +34,7 @@ const navItems = [
   { name: "Queue", href: "/queue", icon: Layers },
   { name: "Assets", href: "/assets", icon: Library },
   { name: "Settings", href: "/settings", icon: Settings },
+  { name: "Import PDF", href: "/import/pdf-creative-dna", icon: Layers },
 ];
 
 export function Sidebar() {

@@ -202,8 +202,8 @@ export default function ImportPage() {
             {/* Header: Album mapping */}
             <div className="flex flex-col md:flex-row gap-8 items-start">
               <div className="w-full md:w-48 aspect-square rounded-2xl bg-zinc-800 flex items-center justify-center overflow-hidden border border-white/10">
-                {preview.coverCandidate?.driveFile.thumbnailLink ? (
-                  <img src={preview.coverCandidate.driveFile.thumbnailLink} alt="Cover" className="w-full h-full object-cover" />
+                {(preview.coverCandidate?.driveFile.thumbnailLink || preview.coverCandidate?.driveFile.webContentLink) ? (
+                  <img src={preview.coverCandidate.driveFile.thumbnailLink || preview.coverCandidate.driveFile.webContentLink} alt="Cover" className="w-full h-full object-cover" />
                 ) : (
                   <ImageIcon className="w-12 h-12 text-white/20" />
                 )}
