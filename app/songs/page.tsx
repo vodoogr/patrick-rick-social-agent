@@ -9,6 +9,7 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { EmptyState } from "@/components/ui/EmptyState";
 import Link from "next/link";
+import { useAudioPlayer } from "@/contexts/AudioPlayerContext";
 
 const eraColors: Record<SongEra, string> = {
   [SongEra.BLUE]: "bg-blue-500",
@@ -30,6 +31,8 @@ export default function SongsPage() {
   const [filter, setFilter] = useState<SongEra | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const { playSong } = useAudioPlayer();
 
   useEffect(() => {
     async function fetchSongs() {
@@ -132,8 +135,16 @@ export default function SongsPage() {
                    ) : null}
                    <Music2 className={`w-12 h-12 text-white/10 group-hover:scale-110 transition-transform duration-500 placeholder-icon ${song.cover_path ? 'hidden' : ''}`} />
                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                     <div className="w-12 h-12 rounded-full bg-white text-zinc-950 flex items-center justify-center translate-y-4 group-hover:translate-y-0 transition-transform">
-                       <Play className="w-5 h-5 fill-current" />
+                     <div 
+                       className="w-12 h-12 rounded-full bg-white text-zinc-950 flex items-center justify-center translate-y-4 group-hover:translate-y-0 transition-transform hover:scale-110"
+                       onClick={(e) => {
+                         if (song.audio_path || song.drive_file_id) {
+                           e.preventDefault();
+                           playSong(song);
+                         }
+                       }}
+                     >
+                       <Play className="w-5 h-5 fill-current ml-1" />
                      </div>
                    </div>
                 </div>

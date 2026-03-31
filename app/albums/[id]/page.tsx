@@ -13,7 +13,8 @@ import {
   Image as ImageIcon,
   Edit3,
   Check,
-  Loader2
+  Loader2,
+  X
 } from "lucide-react";
 import { AlbumService } from "@/services/album-service";
 import { SongService } from "@/services/song-service";
@@ -23,6 +24,7 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { CreativeDNAEditor, ALBUM_DNA_FIELDS } from "@/components/CreativeDNAEditor";
 import Link from "next/link";
+import { useAudioPlayer } from "@/contexts/AudioPlayerContext";
 
 const eraGradients: Record<string, string> = {
   [SongEra.RED]: "from-red-600/20 to-transparent",
@@ -44,6 +46,8 @@ export default function AlbumDetailPage() {
   const [editYear, setEditYear] = useState<number | "">("");
   const [editEra, setEditEra] = useState<SongEra | "">("");
   const [saving, setSaving] = useState(false);
+  
+  const { playSong } = useAudioPlayer();
 
   useEffect(() => {
     if (album) {
@@ -268,11 +272,21 @@ export default function AlbumDetailPage() {
               {songs.map((song, idx) => (
                 <Link key={song.id} href={`/songs/${song.id}`}>
                   <div className="flex items-center gap-4 p-4 glass border border-white/5 rounded-2xl group hover:border-white/20 hover:bg-white/5 transition-all cursor-pointer">
-                    <div className="w-8 text-center">
+                    <div 
+                      className="w-8 text-center relative z-10 flex items-center justify-center" 
+                      onClick={(e) => {
+                         if (song.audio_path || song.drive_file_id) {
+                           e.preventDefault();
+                           playSong(song, album);
+                         }
+                      }}
+                    >
                       <span className="text-sm font-bold text-white/30 group-hover:hidden">
                         {song.track_number ?? idx + 1}
                       </span>
-                      <Play className="w-4 h-4 text-white hidden group-hover:block mx-auto fill-current" />
+                      <div className="hidden group-hover:flex items-center justify-center w-8 h-8 rounded-full bg-white/10 hover:bg-white hover:text-black transition-colors">
+                        <Play className="w-4 h-4 fill-current ml-0.5" />
+                      </div>
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold truncate">{song.title}</p>

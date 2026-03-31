@@ -3,6 +3,7 @@ import { TopBar } from "@/components/TopBar";
 import "./globals.css";
 import { Inter } from "next/font/google";
 import { createClient } from "@/lib/supabase/server";
+import { AudioPlayerProvider } from "@/contexts/AudioPlayerContext";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -22,7 +23,8 @@ export default async function RootLayout({
   return (
     <html lang="en">
       <body className={`${inter.className} bg-black text-white overflow-hidden`}>
-        {user ? (
+        <AudioPlayerProvider>
+          {user ? (
           <div className="flex h-screen w-full">
             <Sidebar />
             <div className="flex-1 flex flex-col min-w-0 ml-64">
@@ -37,6 +39,7 @@ export default async function RootLayout({
             {children}
           </div>
         )}
+        </AudioPlayerProvider>
       </body>
     </html>
   );

@@ -29,6 +29,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { CreativeDNAEditor, SONG_DNA_FIELDS } from "@/components/CreativeDNAEditor";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
+import { useAudioPlayer } from "@/contexts/AudioPlayerContext";
 
 const eraGradients: Record<string, string> = {
   [SongEra.RED]: "from-red-600/20 to-transparent",
@@ -63,6 +64,8 @@ export default function SongDetailPage() {
   const [editTrackNumber, setEditTrackNumber] = useState<number | "">("");
   const [editEra, setEditEra] = useState<SongEra | "">("");
   const [saving, setSaving] = useState(false);
+
+  const { playSong } = useAudioPlayer();
 
   useEffect(() => {
     if (song) {
@@ -202,7 +205,15 @@ export default function SongDetailPage() {
               <Music2 className="w-24 h-24 text-white/10 group-hover:scale-110 transition-transform duration-700" />
             )}
             <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-              <button className="w-16 h-16 rounded-full bg-white text-zinc-950 flex items-center justify-center scale-90 group-hover:scale-100 transition-all shadow-xl">
+              <button 
+                className="w-16 h-16 rounded-full bg-white text-zinc-950 flex items-center justify-center scale-90 group-hover:scale-100 transition-all shadow-xl hover:scale-110"
+                onClick={(e) => {
+                  if (song.audio_path || song.drive_file_id) {
+                    e.preventDefault();
+                    playSong(song, song.albums || undefined);
+                  }
+                }}
+              >
                 <Play className="w-6 h-6 fill-current ml-1" />
               </button>
             </div>
