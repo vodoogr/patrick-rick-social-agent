@@ -44,10 +44,12 @@ export enum PlatformName {
 export enum AssetType {
   AUDIO = 'audio',
   COVER = 'cover',
+  SONG_COVER = 'song_cover',
   IMAGE = 'image',
   VIDEO = 'video',
   SUBTITLE = 'subtitle',
   THUMBNAIL = 'thumbnail',
+  REEL_VISUAL = 'reel_visual',
   OTHER = 'other',
 }
 

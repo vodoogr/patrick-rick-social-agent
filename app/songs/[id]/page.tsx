@@ -296,7 +296,7 @@ export default function SongDetailPage() {
               <button
                 onClick={handleStartCampaign}
                 disabled={startingCampaign}
-                className="px-8 py-4 rounded-2xl bg-white text-zinc-950 font-bold text-sm uppercase tracking-widest hover:bg-zinc-200 transition-all shadow-[0_0_30px_rgba(255,255,255,0.1)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-3"
+                className="px-8 py-4 rounded-2xl bg-white/10 text-white font-bold text-sm uppercase tracking-widest hover:bg-white/20 transition-all border border-white/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-3"
               >
                 {startingCampaign ? (
                   <>
@@ -304,9 +304,17 @@ export default function SongDetailPage() {
                     Starting...
                   </>
                 ) : (
-                  "Initiate Social Campaign"
+                  "Initiate Campaign"
                 )}
               </button>
+
+              <Link
+                href={`/campaigns/generator?song_id=${song.id}`}
+                className="px-8 py-4 rounded-2xl bg-white text-zinc-950 font-bold text-sm uppercase tracking-widest hover:bg-zinc-200 transition-all shadow-[0_0_30px_rgba(255,255,255,0.1)] flex items-center gap-3"
+              >
+                <Target className="w-4 h-4" />
+                Generate AI Assets
+              </Link>
             </div>
           </div>
         </div>

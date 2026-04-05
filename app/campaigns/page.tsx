@@ -94,6 +94,13 @@ export default function CampaignsPage() {
           <h2 className="text-3xl font-bold tracking-tight">Campaign Engine</h2>
           <p className="text-white/40 text-sm mt-1">Monitor active narratives and content flows.</p>
         </div>
+        <Link 
+          href="/campaigns/generator"
+          className="px-6 py-3 rounded-2xl bg-white text-zinc-950 font-bold text-xs uppercase tracking-widest hover:bg-zinc-200 transition-all shadow-[0_0_20px_rgba(255,255,255,0.1)] flex items-center gap-2"
+        >
+          <Target className="w-4 h-4" />
+          AI Generator
+        </Link>
       </div>
 
       {activeCampaign ? (

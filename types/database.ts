@@ -115,6 +115,11 @@ export interface Campaign {
   last_published_at: string | null;
   is_current: boolean;
   notes: string | null;
+  campaign_hook?: string | null;
+  caption?: string | null;
+  hashtags?: string | null;
+  video_prompt?: string | null;
+  campaign_concept?: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -82,6 +82,8 @@ do $$ begin
     'video',
     'subtitle',
     'thumbnail',
+    'song_cover',
+    'reel_visual',
     'other'
   );
 exception
@@ -185,6 +187,11 @@ create table if not exists public.campaigns (
   last_published_at timestamptz,
   is_current boolean not null default false,
   notes text,
+  campaign_hook text,
+  caption text,
+  hashtags text,
+  video_prompt text,
+  campaign_concept text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

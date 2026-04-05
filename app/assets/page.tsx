@@ -15,6 +15,8 @@ const typeIcons: Record<AssetType, any> = {
   [AssetType.SUBTITLE]: FileText,
   [AssetType.THUMBNAIL]: ImageIcon,
   [AssetType.COVER]: ImageIcon,
+  [AssetType.SONG_COVER]: ImageIcon,
+  [AssetType.REEL_VISUAL]: ImageIcon,
   [AssetType.OTHER]: FileText,
 };
 
@@ -78,7 +80,7 @@ export default function AssetsPage() {
             return (
               <div key={asset.id} className="group glass border border-white/5 rounded-[2rem] overflow-hidden hover:border-white/20 transition-all">
                 <div className="aspect-square bg-white/5 flex items-center justify-center relative overflow-hidden">
-                  {asset.asset_type === AssetType.IMAGE || asset.asset_type === AssetType.COVER ? (
+                  {[AssetType.IMAGE, AssetType.COVER, AssetType.SONG_COVER, AssetType.REEL_VISUAL].includes(asset.asset_type) ? (
                     <img src={asset.storage_path} alt={asset.file_name || ""} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
                   ) : (
                     <Icon className="w-12 h-12 text-white/20" />
