@@ -24,6 +24,7 @@ import {
 import { useRouter } from "next/navigation";
 import { CampaignActionButtons } from "./CampaignActionButtons";
 import { GeneratedAssetPreview } from "./GeneratedAssetPreview";
+import { VideoGenerationModal } from "./VideoGenerationModal";
 
 export function CampaignGeneratorPanel({ initialSongId }: { initialSongId?: string }) {
   const router = useRouter();
@@ -59,6 +60,7 @@ export function CampaignGeneratorPanel({ initialSongId }: { initialSongId?: stri
   const [coverSaved, setCoverSaved] = useState(false);
   const [reelSaved, setReelSaved] = useState(false);
   const [videoSaved, setVideoSaved] = useState(false);
+  const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
 
   const [lastSavedId, setLastSavedId] = useState<string | null>(null);
 
@@ -207,11 +209,29 @@ export function CampaignGeneratorPanel({ initialSongId }: { initialSongId?: stri
     }
   };
 
-  const handleGenerateVideo = async () => {
-    if (!videoPrompt) return;
+  const handleGenerateVideo = async (imageReference?: string | File) => {
+    if (!videoPrompt || !song) return;
     setGeneratingVideo(true);
     try {
-      const result = await GoogleVideoGeneration.generateCampaignVideo(videoPrompt);
+      let referenceUrl: string | undefined;
+
+      if (imageReference instanceof File) {
+        // Upload the temporary reference file to storage
+        const storagePath = `temp_references/${Date.now()}_ref_${imageReference.name}`;
+        const asset = await AssetService.upload(imageReference, storagePath, AssetType.OTHER, song.id);
+        referenceUrl = AssetService.getPublicUrl(asset.storage_path);
+      } else {
+        referenceUrl = imageReference;
+      }
+
+      const result = await GoogleVideoGeneration.generate({
+        prompt: videoPrompt,
+        aspectRatio: '9:16',
+        durationSeconds: 10,
+        style: 'cinematic',
+        // Pass reference image if available for VEO
+        ...(referenceUrl && { imageReference: referenceUrl })
+      });
       setVideoResult(result);
     } catch (e: any) {
       alert("Video generation error: " + e.message);
@@ -550,7 +570,7 @@ export function CampaignGeneratorPanel({ initialSongId }: { initialSongId?: stri
                       <CampaignActionButtons
                         type="video"
                         prompt={videoPrompt}
-                        onGenerate={handleGenerateVideo}
+                        onGenerate={() => setIsVideoModalOpen(true)}
                         onSaveAsset={handleSaveVideoAsset}
                         isGenerating={generatingVideo}
                         isGenerated={!!videoResult}
@@ -584,6 +604,16 @@ export function CampaignGeneratorPanel({ initialSongId }: { initialSongId?: stri
             )}
           </div>
         </div>
+      )}
+
+      {song && (
+        <VideoGenerationModal
+          isOpen={isVideoModalOpen}
+          onClose={() => setIsVideoModalOpen(false)}
+          songId={song.id}
+          promptText={videoPrompt}
+          onGenerate={handleGenerateVideo}
+        />
       )}
     </div>
   );

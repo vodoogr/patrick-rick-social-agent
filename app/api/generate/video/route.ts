@@ -10,7 +10,7 @@ import { NextResponse } from 'next/server';
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { prompt, aspectRatio = '9:16', durationSeconds = 10, style = 'cinematic' } = body;
+    const { prompt, aspectRatio = '9:16', durationSeconds = 10, style = 'cinematic', imageReference } = body;
 
     if (!prompt) {
       return NextResponse.json({ error: 'prompt is required' }, { status: 400 });
@@ -34,6 +34,13 @@ export async function POST(req: Request) {
                 aspectRatio,
                 durationSeconds,
                 personGeneration: 'ALLOW_ADULT',
+                // Include reference image for Image-To-Video if provided
+                ...(imageReference && { 
+                  referenceImage: { 
+                    image: imageReference, 
+                    role: 'FIRST_FRAME' 
+                  } 
+                }),
               },
             }),
           }

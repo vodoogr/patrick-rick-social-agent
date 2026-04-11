@@ -35,7 +35,11 @@ export const GoogleVideoGeneration = {
     const response = await fetch('/api/generate/video', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(request),
+      body: JSON.stringify({
+        ...request,
+        // Map imageReference to what the API expects if needed, 
+        // usually it goes inside parameters or similar depending on the exact Google Vertex AI spec
+      }),
     });
 
     if (!response.ok) {

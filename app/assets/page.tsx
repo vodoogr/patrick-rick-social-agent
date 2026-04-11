@@ -30,9 +30,7 @@ export default function AssetsPage() {
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      // We don't have a getAll for assets yet, let's assume we fetch all or add it
-      const { data, error } = await (AssetService as any).getAll();
-      if (error) throw error;
+      const data = await AssetService.getAll();
       setAssets(data || []);
     } catch (err: any) {
       setError(err.message);
@@ -44,6 +42,33 @@ export default function AssetsPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const handleDelete = async (asset: Asset) => {
+    if (!window.confirm(`Are you sure you want to delete ${asset.file_name || "this asset"}?`)) {
+      return;
+    }
+    
+    try {
+      await AssetService.delete(asset.id, asset.storage_path);
+      setAssets((prev) => prev.filter((a) => a.id !== asset.id));
+    } catch (err: any) {
+      alert("Failed to delete asset: " + err.message);
+    }
+  };
+
+  const handleDownload = (asset: Asset) => {
+    const url = asset.storage_path.startsWith('http') || asset.storage_path.startsWith('data:') 
+      ? asset.storage_path 
+      : AssetService.getPublicUrl(asset.storage_path);
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = asset.file_name || 'download';
+    a.target = '_blank';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
 
   const filteredAssets = filter === "ALL" ? assets : assets.filter(a => a.asset_type === filter);
 
@@ -63,9 +88,11 @@ export default function AssetsPage() {
             onChange={(e) => setFilter(e.target.value as any)}
             className="h-11 px-6 rounded-2xl glass border border-white/10 font-bold text-sm bg-transparent appearance-none hover:bg-white/5 transition-all outline-none"
           >
-            <option value="ALL">All Types</option>
+            <option value="ALL" className="bg-zinc-900 text-white">All Types</option>
             {Object.values(AssetType).map(type => (
-              <option key={type} value={type}>{type.charAt(0).toUpperCase() + type.slice(1)}</option>
+              <option key={type} value={type} className="bg-zinc-900 text-white">
+                {type.charAt(0).toUpperCase() + type.slice(1)}
+              </option>
             ))}
           </select>
           <button className="h-11 px-6 rounded-2xl bg-white text-zinc-950 font-black uppercase tracking-widest text-[10px] flex items-center gap-2 hover:bg-zinc-200 transition-all">
@@ -91,10 +118,16 @@ export default function AssetsPage() {
                     <Icon className="w-12 h-12 text-white/20" />
                   )}
                   <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
-                     <button className="p-3 rounded-full bg-white text-black hover:scale-110 transition-transform">
+                     <button 
+                        onClick={() => handleDownload(asset)}
+                        className="p-3 rounded-full bg-white text-black hover:scale-110 transition-transform"
+                     >
                         <Download className="w-5 h-5" />
                      </button>
-                     <button className="p-3 rounded-full bg-white/10 text-white hover:bg-red-500 transition-colors">
+                     <button 
+                        onClick={() => handleDelete(asset)}
+                        className="p-3 rounded-full bg-white/10 text-white hover:bg-red-500 transition-colors"
+                     >
                         <Trash2 className="w-5 h-5" />
                      </button>
                   </div>

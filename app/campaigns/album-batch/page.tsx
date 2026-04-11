@@ -18,6 +18,7 @@ import {
   RefreshCw, Zap, Target
 } from "lucide-react";
 import Link from "next/link";
+import { VideoGenerationModal } from "@/components/campaign/VideoGenerationModal";
 
 type SongSelection = Record<string, boolean>;
 
@@ -42,6 +43,9 @@ export default function AlbumBatchCampaignPage() {
   const [generatingImage, setGeneratingImage] = useState<string | null>(null);
   const [generatingVideo, setGeneratingVideo] = useState<string | null>(null);
   const [savingCampaign, setSavingCampaign] = useState<string | null>(null);
+  
+  // Modal for video reference
+  const [videoModalSong, setVideoModalSong] = useState<SongCampaignResult | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -169,10 +173,27 @@ export default function AlbumBatchCampaignPage() {
     }
   };
 
-  const handleGenerateVideoForSong = async (songResult: SongCampaignResult) => {
+  const handleGenerateVideoForSong = async (songResult: SongCampaignResult, imageReference?: string | File) => {
     setGeneratingVideo(songResult.songId);
     try {
-      const result = await GoogleVideoGeneration.generateCampaignVideo(songResult.videoPrompt);
+      let referenceUrl: string | undefined;
+
+      if (imageReference instanceof File) {
+        const storagePath = `temp_references/${Date.now()}_ref_${imageReference.name}`;
+        const asset = await AssetService.upload(imageReference, storagePath, AssetType.OTHER, songResult.songId);
+        referenceUrl = AssetService.getPublicUrl(asset.storage_path);
+      } else {
+        referenceUrl = imageReference;
+      }
+
+      const result = await GoogleVideoGeneration.generate({
+        prompt: songResult.videoPrompt,
+        aspectRatio: '9:16',
+        durationSeconds: 10,
+        style: 'cinematic',
+        ...(referenceUrl && { imageReference: referenceUrl })
+      });
+
       await AssetService.uploadFromDataUrl(
         result.videoUrl,
         `${songResult.songTitle}_video_ai.mp4`,
@@ -226,9 +247,9 @@ export default function AlbumBatchCampaignPage() {
           onChange={e => setSelectedAlbumId(e.target.value)}
           className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-white/30"
         >
-          <option value="">-- Choose an album --</option>
+          <option value="" className="bg-zinc-900 text-white">-- Choose an album --</option>
           {albums.map(a => (
-            <option key={a.id} value={a.id}>{a.title} ({a.era})</option>
+            <option key={a.id} value={a.id} className="bg-zinc-900 text-white">{a.title} ({a.era})</option>
           ))}
         </select>
       </div>
@@ -347,6 +368,12 @@ export default function AlbumBatchCampaignPage() {
                         {batchResult.failed} failed
                       </span>
                     )}
+                    <Link
+                      href="/assets"
+                      className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-[10px] font-bold uppercase tracking-widest transition-all"
+                    >
+                      <ImageIcon className="w-3 h-3" /> View Assets Gallery
+                    </Link>
                     <button
                       onClick={handleSaveAll}
                       className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-bold uppercase tracking-widest transition-all"
@@ -423,7 +450,7 @@ export default function AlbumBatchCampaignPage() {
                             </button>
 
                             <button
-                              onClick={() => handleGenerateVideoForSong(result)}
+                              onClick={() => setVideoModalSong(result)}
                               disabled={generatingVideo === result.songId || result.videoGenerated}
                               className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-500/10 border border-blue-500/30 text-blue-300 text-[10px] font-bold uppercase tracking-widest hover:bg-blue-500/20 disabled:opacity-40"
                             >
@@ -468,6 +495,16 @@ export default function AlbumBatchCampaignPage() {
             </div>
           )}
         </div>
+      )}
+
+      {album && songs.length > 0 && (
+        <VideoGenerationModal
+          isOpen={!!videoModalSong}
+          onClose={() => setVideoModalSong(null)}
+          songId={videoModalSong?.songId || ""}
+          promptText={videoModalSong?.videoPrompt || ""}
+          onGenerate={(ref) => videoModalSong && handleGenerateVideoForSong(videoModalSong, ref)}
+        />
       )}
     </div>
   );
