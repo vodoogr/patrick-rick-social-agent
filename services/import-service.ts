@@ -28,35 +28,27 @@ export const ImportService = {
       }
     });
 
-    // Determine Cover Candidate
+    // Determine Album Cover Candidate
     let coverCandidate: CoverCandidate | null = null;
     if (imageFiles.length > 0) {
-      // Find one named "cover", "front", "caratula" or take the first
+      // Find one named exactly "cover" or "COVER" (without extension)
       const exactCover = imageFiles.find(i => {
-         const n = i.name.toLowerCase();
-         return n.includes('cover') || n.includes('front') || n.includes('caratula') || n.includes('carátula') || n.includes('art');
+         const n = i.name.toLowerCase().replace(/\.[^/.]+$/, "");
+         return n === 'cover';
       });
-      coverCandidate = {
-        driveFile: exactCover || imageFiles[0],
-        isConfirmed: true
-      };
       
-      // Put non-cover images back into otherFiles
-      imageFiles.forEach(img => {
-        if (img.id !== coverCandidate!.driveFile.id) {
-          otherFiles.push(img);
-        }
-      });
+      // If exact cover found, assign it. If not, don't blindly take imageFiles[0], unless there's only 1 image maybe? The prompt said: "la caratula por defecto del album debe ser el archivo llamado COVER o cover"
+      if (exactCover) {
+        coverCandidate = { driveFile: exactCover, isConfirmed: true };
+      }
     }
 
     // Determine Tracks
     const trackCandidates: TrackCandidate[] = audioFiles.map(file => {
-      // Very basic parsing: "01 - Title.mp3", "1. Title.WAV", "Title.mp3"
       let trackNum: number | null = null;
       let title = file.name.replace(/\.(mp3|wav|flac|m4a)$/i, '');
 
       // Try to extract initial numbers
-      // Try to extract initial numbers, allowing for prepended folder names like "Bonus - 01 - Track"
       const match = title.match(/(?:.*-\s*)?0*(\d+)[\s-_\.]+(.*)$/);
       if (match) {
         trackNum = parseInt(match[1], 10);
@@ -69,12 +61,38 @@ export const ImportService = {
          else trackNum = 999;
       }
 
+      // Check for track specific cover
+      const cleanTitle = title.toLowerCase().trim().replace(/\s+/g, ' ');
+      const rawAudioName = file.name.replace(/\.(mp3|wav|flac|m4a)$/i, '').toLowerCase().trim().replace(/\s+/g, ' ');
+      
+      const trackCover = imageFiles.find(i => {
+         const n = i.name.toLowerCase().replace(/\.[^/.]+$/, "").trim().replace(/\s+/g, ' ');
+         
+         const escapedTitle = cleanTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+         const coverRegex = new RegExp(`(?:^|\\d+[\\s-_.]+)?${escapedTitle}\\s*[_-]?\\s*cover$`);
+         
+         const escapedRaw = rawAudioName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+         const rawCoverRegex = new RegExp(`^${escapedRaw}\\s*[_-]?\\s*cover$`);
+         
+         return coverRegex.test(n) || rawCoverRegex.test(n) || n === `${cleanTitle} caratula`;
+      });
+
       return {
         driveFile: file,
         inferredTitle: title,
         inferredTrackNumber: trackNum,
-        status: 'new' // To be updated below,
+        status: 'new',
+        coverCandidate: trackCover ? { driveFile: trackCover, isConfirmed: true } : null
       };
+    });
+
+    // Populate otherFiles
+    imageFiles.forEach(img => {
+      const isAlbumCover = coverCandidate && img.id === coverCandidate.driveFile.id;
+      const isTrackCover = trackCandidates.some(tc => tc.coverCandidate && tc.coverCandidate.driveFile.id === img.id);
+      if (!isAlbumCover && !isTrackCover) {
+        otherFiles.push(img);
+      }
     });
 
     // Try to detect existing matched Album

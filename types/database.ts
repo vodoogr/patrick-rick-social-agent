@@ -55,6 +55,7 @@ export interface Album {
   description: string | null;
   release_year: number | null;
   drive_folder_id: string | null;
+  spotify_url?: string | null;
   sort_order: number;
   is_active: boolean;
   creative_dna: AlbumCreativeDNA;

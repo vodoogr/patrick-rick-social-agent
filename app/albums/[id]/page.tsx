@@ -14,7 +14,8 @@ import {
   Edit3,
   Check,
   Loader2,
-  X
+  X,
+  Sparkles
 } from "lucide-react";
 import { AlbumService } from "@/services/album-service";
 import { SongService } from "@/services/song-service";
@@ -45,6 +46,8 @@ export default function AlbumDetailPage() {
   const [editTitle, setEditTitle] = useState("");
   const [editYear, setEditYear] = useState<number | "">("");
   const [editEra, setEditEra] = useState<SongEra | "">("");
+  const [editCoverPath, setEditCoverPath] = useState("");
+  const [editSpotifyUrl, setEditSpotifyUrl] = useState("");
   const [saving, setSaving] = useState(false);
   
   const { playSong } = useAudioPlayer();
@@ -54,6 +57,8 @@ export default function AlbumDetailPage() {
       setEditTitle(album.title);
       setEditYear(album.release_year || "");
       setEditEra(album.era || "");
+      setEditCoverPath(album.cover_path || "");
+      setEditSpotifyUrl(album.spotify_url || "");
     }
   }, [album]);
 
@@ -87,7 +92,9 @@ export default function AlbumDetailPage() {
       const updated = await AlbumService.update(album.id, {
         title: editTitle,
         release_year: editYear === "" ? null : editYear,
-        era: newEra
+        era: newEra,
+        cover_path: editCoverPath || null,
+        spotify_url: editSpotifyUrl || null
       } as any);
 
       let updatedSongs = album.songs || [];
@@ -119,7 +126,9 @@ export default function AlbumDetailPage() {
       const updated = await AlbumService.update(album.id, {
         title: isEditing ? editTitle : album.title,
         release_year: isEditing ? (editYear === "" ? null : editYear) : album.release_year,
-        era: currentEra
+        era: currentEra,
+        cover_path: isEditing ? (editCoverPath || null) : album.cover_path,
+        spotify_url: isEditing ? (editSpotifyUrl || null) : album.spotify_url
       } as any);
 
       // Force cascade era update to all tracks, even if it didn't change (to fix PRESENT era bugs)
@@ -154,6 +163,13 @@ export default function AlbumDetailPage() {
           <span className="text-xs font-bold uppercase tracking-widest">Back to Albums</span>
         </Link>
         <div className="flex items-center gap-3">
+          <Link
+            href={`/campaigns/album-batch?album_id=${id}`}
+            className="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600/20 to-blue-600/20 hover:from-purple-600/30 hover:to-blue-600/30 border border-purple-500/30 text-xs font-bold uppercase tracking-widest text-purple-300 group flex items-center gap-2 transition-all hover:scale-105 shadow-[0_0_15px_rgba(168,85,247,0.1)]"
+          >
+            <Sparkles className="w-3 h-3" />
+            Generate Campaigns
+          </Link>
           <Link
             href={`/import/pdf-creative-dna`}
             className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/20 border border-white/10 text-xs font-bold uppercase tracking-widest text-emerald-400 group flex items-center gap-2 transition-all hover:scale-105"
@@ -240,6 +256,44 @@ export default function AlbumDetailPage() {
               <p className="text-xl text-white/70 max-w-2xl leading-relaxed italic font-serif">
                 &quot;{album.description}&quot;
               </p>
+            )}
+
+            {isEditing && (
+              <div className="space-y-4 pt-4 border-t border-white/10">
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-white/40 tracking-widest block mb-1">Cover Image URL</label>
+                  <input
+                    type="text"
+                    value={editCoverPath}
+                    onChange={e => setEditCoverPath(e.target.value)}
+                    placeholder="https://..."
+                    className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-white/30"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-white/40 tracking-widest block mb-1">Spotify URL</label>
+                  <input
+                    type="text"
+                    value={editSpotifyUrl}
+                    onChange={e => setEditSpotifyUrl(e.target.value)}
+                    placeholder="https://open.spotify.com/album/..."
+                    className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-white/30"
+                  />
+                </div>
+              </div>
+            )}
+
+            {!isEditing && album.spotify_url && (
+              <div className="pt-2">
+                <a 
+                  href={album.spotify_url} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#1DB954] hover:bg-[#1ed760] text-black text-xs font-bold uppercase tracking-widest transition-transform hover:scale-105 shadow-lg shadow-[#1DB954]/20"
+                >
+                  <Play className="w-3 h-3 fill-current" /> Listen on Spotify
+                </a>
+              </div>
             )}
 
             <div className="flex items-center gap-4 pt-2">
@@ -331,6 +385,14 @@ export default function AlbumDetailPage() {
             }}
           />
         </div>
+
+
+      </div>
+
+      <div className="pt-8 mt-12 border-t border-white/5 flex justify-center pb-8">
+        <p className="text-[10px] text-white/20 uppercase tracking-widest font-bold">
+          {album.created_at ? `Imported: ${new Date(album.created_at).toLocaleString()}` : 'Date unknown'}
+        </p>
       </div>
     </div>
   );

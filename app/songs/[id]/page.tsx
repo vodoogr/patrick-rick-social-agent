@@ -63,6 +63,8 @@ export default function SongDetailPage() {
   const [editTitle, setEditTitle] = useState("");
   const [editTrackNumber, setEditTrackNumber] = useState<number | "">("");
   const [editEra, setEditEra] = useState<SongEra | "">("");
+  const [editCoverPath, setEditCoverPath] = useState("");
+  const [editSpotifyUrl, setEditSpotifyUrl] = useState("");
   const [saving, setSaving] = useState(false);
 
   const { playSong } = useAudioPlayer();
@@ -72,6 +74,8 @@ export default function SongDetailPage() {
       setEditTitle(song.title);
       setEditTrackNumber(song.track_number ?? "");
       setEditEra(song.era || "");
+      setEditCoverPath(song.cover_path || "");
+      setEditSpotifyUrl(song.spotify_url || "");
     }
   }, [song]);
 
@@ -126,7 +130,9 @@ export default function SongDetailPage() {
       const updated = await SongService.update(song.id, {
         title: editTitle,
         track_number: editTrackNumber === "" ? null : editTrackNumber,
-        era: editEra === "" ? undefined : editEra as SongEra
+        era: editEra === "" ? undefined : editEra as SongEra,
+        cover_path: editCoverPath || null,
+        spotify_url: editSpotifyUrl || null
       });
       setSong({ ...song, ...updated });
       setIsEditing(false);
@@ -276,7 +282,45 @@ export default function SongDetailPage() {
               )}
             </div>
 
-            <p className="text-xl text-white/70 max-w-2xl leading-relaxed italic font-serif">
+            {isEditing && (
+              <div className="space-y-4 pt-4 border-t border-white/10">
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-white/40 tracking-widest block mb-1">Cover Image URL</label>
+                  <input
+                    type="text"
+                    value={editCoverPath}
+                    onChange={e => setEditCoverPath(e.target.value)}
+                    placeholder="https://..."
+                    className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-white/30"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-white/40 tracking-widest block mb-1">Spotify URL</label>
+                  <input
+                    type="text"
+                    value={editSpotifyUrl}
+                    onChange={e => setEditSpotifyUrl(e.target.value)}
+                    placeholder="https://open.spotify.com/track/..."
+                    className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-white/30"
+                  />
+                </div>
+              </div>
+            )}
+
+            {!isEditing && song.spotify_url && (
+              <div className="pt-0">
+                <a 
+                  href={song.spotify_url} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#1DB954] hover:bg-[#1ed760] text-black text-xs font-bold uppercase tracking-widest transition-transform hover:scale-105 shadow-lg shadow-[#1DB954]/20"
+                >
+                  <Play className="w-3 h-3 fill-current" /> Listen on Spotify
+                </a>
+              </div>
+            )}
+
+            <p className="text-xl text-white/70 max-w-2xl leading-relaxed italic font-serif mt-4">
               &quot;{song.emotional_summary || song.creative_dna?.emotional_summary || "No emotional summary yet."}&quot;
             </p>
 

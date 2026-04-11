@@ -4,6 +4,7 @@ import "./globals.css";
 import { Inter } from "next/font/google";
 import { createClient } from "@/lib/supabase/server";
 import { AudioPlayerProvider } from "@/contexts/AudioPlayerContext";
+import { LanguageProvider } from "@/contexts/LanguageContext";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -23,23 +24,25 @@ export default async function RootLayout({
   return (
     <html lang="en">
       <body className={`${inter.className} bg-black text-white overflow-hidden`}>
-        <AudioPlayerProvider>
-          {user ? (
-          <div className="flex h-screen w-full">
-            <Sidebar />
-            <div className="flex-1 flex flex-col min-w-0 ml-64">
-              <TopBar />
-              <main className="flex-1 overflow-y-auto p-8 custom-scrollbar">
-                {children}
-              </main>
+        <LanguageProvider>
+          <AudioPlayerProvider>
+            {user ? (
+            <div className="flex h-screen w-full">
+              <Sidebar />
+              <div className="flex-1 flex flex-col min-w-0 ml-64">
+                <TopBar />
+                <main className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+                  {children}
+                </main>
+              </div>
             </div>
-          </div>
-        ) : (
-          <div className="h-screen w-full overflow-y-auto">
-            {children}
-          </div>
-        )}
-        </AudioPlayerProvider>
+          ) : (
+            <div className="h-screen w-full overflow-y-auto">
+              {children}
+            </div>
+          )}
+          </AudioPlayerProvider>
+        </LanguageProvider>
       </body>
     </html>
   );

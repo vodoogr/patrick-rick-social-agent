@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Target, Play, Pause, RefreshCw, ChevronRight, LayoutList, CheckCircle2 } from "lucide-react";
+import { Target, Play, Pause, RefreshCw, ChevronRight, LayoutList, CheckCircle2, Copy, Check } from "lucide-react";
 import { CampaignService } from "@/services/campaign-service";
 import { PostService } from "@/services/post-service";
 import { Campaign, GeneratedPost, CampaignStatus, SongEra, CampaignWithSong } from "@/types";
@@ -28,6 +28,13 @@ export default function CampaignsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const handleCopy = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
 
   const fetchData = useCallback(async () => {
     try {
@@ -196,6 +203,78 @@ export default function CampaignsPage() {
                 </div>
             </div>
           </div>
+
+          {/* AI generated assets section */}
+          {(activeCampaign.campaign_hook || activeCampaign.campaign_concept) && (
+            <div className="relative z-10 mt-10 p-6 sm:p-8 bg-white/[0.02] border border-white/10 rounded-[2rem]">
+              <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40 mb-6 flex items-center gap-2">
+                <Target className="w-3 h-3" /> Core Campaign Assets
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="space-y-6">
+                  {activeCampaign.campaign_hook && (
+                    <div className="group relative">
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Master Hook</p>
+                        <button onClick={() => handleCopy(activeCampaign.campaign_hook!, 'hook')} className="text-white/20 hover:text-white transition-opacity">
+                          {copiedId === 'hook' ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
+                        </button>
+                      </div>
+                      <p className="text-sm font-bold text-white/90 pr-6">{activeCampaign.campaign_hook}</p>
+                    </div>
+                  )}
+                  {activeCampaign.caption && (
+                    <div className="group relative">
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Base Caption</p>
+                        <button onClick={() => handleCopy(activeCampaign.caption!, 'caption')} className="text-white/20 hover:text-white transition-opacity">
+                          {copiedId === 'caption' ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
+                        </button>
+                      </div>
+                      <p className="text-sm text-white/70 whitespace-pre-wrap pr-6">{activeCampaign.caption}</p>
+                    </div>
+                  )}
+                  {activeCampaign.hashtags && (
+                    <div className="group relative">
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Hashtag Cloud</p>
+                        <button onClick={() => handleCopy(activeCampaign.hashtags!, 'hashtags')} className="text-white/20 hover:text-white transition-opacity">
+                          {copiedId === 'hashtags' ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
+                        </button>
+                      </div>
+                      <p className="text-sm text-blue-400 font-bold pr-6">{activeCampaign.hashtags}</p>
+                    </div>
+                  )}
+                </div>
+                <div className="space-y-6">
+                  {activeCampaign.campaign_concept && (
+                    <div className="group relative">
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Visual Concept</p>
+                        <button onClick={() => handleCopy(activeCampaign.campaign_concept!, 'concept')} className="text-white/20 hover:text-white transition-opacity">
+                          {copiedId === 'concept' ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
+                        </button>
+                      </div>
+                      <p className="text-sm text-white/70 italic pr-6">{activeCampaign.campaign_concept}</p>
+                    </div>
+                  )}
+                  {activeCampaign.video_prompt && (
+                    <div className="group relative">
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Generative Video Prompt</p>
+                        <button onClick={() => handleCopy(activeCampaign.video_prompt!, 'video')} className="text-white/20 hover:text-white transition-opacity">
+                          {copiedId === 'video' ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
+                        </button>
+                      </div>
+                      <div className="p-3 bg-black/40 rounded-xl border border-white/5 text-xs font-mono text-white/60">
+                        {activeCampaign.video_prompt}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         <EmptyState 

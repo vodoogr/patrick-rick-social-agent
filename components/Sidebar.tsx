@@ -12,34 +12,40 @@ import {
   Layers,
   LogOut,
   Search,
-  Disc3
+  Disc3,
+  Zap
 } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { useEffect, useState } from "react";
 import { ProfileService } from "@/services/profile-service";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { Profile } from "@/types";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-const navItems = [
-  { name: "Dashboard", href: "/", icon: LayoutDashboard },
-  { name: "Catalog", href: "/catalog", icon: Search },
-  { name: "Albums", href: "/albums", icon: Disc3 },
-  { name: "Songs", href: "/songs", icon: Music },
-  { name: "Campaigns", href: "/campaigns", icon: Target },
-  { name: "Posts", href: "/posts", icon: Send },
-  { name: "Queue", href: "/queue", icon: Layers },
-  { name: "Assets", href: "/assets", icon: Library },
-  { name: "Settings", href: "/settings", icon: Settings },
-  { name: "Import PDF", href: "/import/pdf-creative-dna", icon: Layers },
+const getNavItems = (t: (key: string) => string) => [
+  { name: t('sidebar.dashboard'), href: "/", icon: LayoutDashboard },
+  { name: t('sidebar.catalog'), href: "/catalog", icon: Search },
+  { name: t('sidebar.albums'), href: "/albums", icon: Disc3 },
+  { name: t('sidebar.songs'), href: "/songs", icon: Music },
+  { name: t('sidebar.campaigns'), href: "/campaigns", icon: Target },
+  { name: "Album Campaigns", href: "/campaigns/album-batch", icon: Zap },
+  { name: t('sidebar.posts'), href: "/posts", icon: Send },
+  { name: t('sidebar.queue'), href: "/queue", icon: Layers },
+  { name: t('sidebar.assets'), href: "/assets", icon: Library },
+  { name: t('sidebar.settings'), href: "/settings", icon: Settings },
+  { name: t('sidebar.import_pdf'), href: "/import/pdf-creative-dna", icon: Layers },
 ];
 
 export function Sidebar() {
+  const { t } = useLanguage();
   const pathname = usePathname();
   const [profile, setProfile] = useState<Profile | null>(null);
+
+  const navItems = getNavItems(t);
 
   useEffect(() => {
     async function fetchProfile() {
@@ -99,7 +105,7 @@ export function Sidebar() {
               {profile?.display_name || profile?.email?.split('@')[0] || 'Loading...'}
             </p>
             <p className="text-[9px] text-white/30 truncate font-bold uppercase tracking-widest italic group-hover:text-white/50 transition-colors">
-              Session Active
+              {t('sidebar.session_active')}
             </p>
           </div>
           <button 

@@ -80,6 +80,7 @@ do $$ begin
     'cover',
     'image',
     'video',
+    'campaign_video',
     'subtitle',
     'thumbnail',
     'song_cover',

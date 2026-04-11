@@ -14,6 +14,7 @@ export interface TrackCandidate {
   inferredTrackNumber: number | null;
   status: 'new' | 'update' | 'skip';
   existingSongId?: string;
+  coverCandidate?: CoverCandidate | null;
 }
 
 export interface CoverCandidate {

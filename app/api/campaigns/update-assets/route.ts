@@ -17,8 +17,56 @@ export async function POST(req: Request) {
       reel_visual_prompt
     } = body;
 
-    if (!campaign_id) {
-      return NextResponse.json({ error: "campaign_id is required" }, { status: 400 });
+    let resolvedCampaignId = campaign_id;
+
+    // If no campaign_id provided, auto-create one for the song
+    if (!resolvedCampaignId && song_id) {
+      // Check if there's an active campaign for this song
+      const { data: existing } = await supabase
+        .from('campaigns')
+        .select('id')
+        .eq('song_id', song_id)
+        .eq('status', 'active')
+        .maybeSingle();
+      
+      if (existing) {
+        resolvedCampaignId = existing.id;
+      } else {
+        // Try RPC first, fallback to direct insert
+        try {
+          const { data: newId, error: rpcError } = await supabase.rpc('start_campaign', {
+            p_song_id: song_id
+          });
+          if (rpcError) throw rpcError;
+          resolvedCampaignId = newId;
+        } catch {
+          // Direct insert fallback
+          const { data: songData } = await supabase
+            .from('songs')
+            .select('owner_id')
+            .eq('id', song_id)
+            .single();
+          
+          const { data: inserted, error: insertErr } = await supabase
+            .from('campaigns')
+            .insert({
+              song_id,
+              owner_id: songData?.owner_id,
+              status: 'active',
+              is_current: false,
+              day_number: 1,
+            })
+            .select('id')
+            .single();
+          
+          if (insertErr) throw insertErr;
+          resolvedCampaignId = inserted.id;
+        }
+      }
+    }
+
+    if (!resolvedCampaignId) {
+      return NextResponse.json({ error: "campaign_id or song_id is required" }, { status: 400 });
     }
 
     // Update Campaign with new fields
@@ -32,36 +80,13 @@ export async function POST(req: Request) {
         video_prompt: video_prompt,
         updated_at: new Date().toISOString()
       })
-      .eq('id', campaign_id);
+      .eq('id', resolvedCampaignId);
 
     if (updateError) throw updateError;
 
-    // Create Assets for the prompts if we want them saved there too 
-    // We get owner_id from campaign
-    const { data: campaign } = await supabase.from('campaigns').select('owner_id').eq('id', campaign_id).single();
-    if (campaign?.owner_id) {
-      // Upsert song_cover
-      await supabase.from('assets').insert({
-        owner_id: campaign.owner_id,
-        song_id: song_id,
-        campaign_id: campaign_id,
-        asset_type: 'song_cover',
-        storage_path: 'generated_prompt', // or a real path if we save the actual image
-        metadata: { prompt: song_cover_prompt }
-      });
 
-      // Upsert reel_visual
-      await supabase.from('assets').insert({
-        owner_id: campaign.owner_id,
-        song_id: song_id,
-        campaign_id: campaign_id,
-        asset_type: 'reel_visual',
-        storage_path: 'generated_prompt',
-        metadata: { prompt: reel_visual_prompt }
-      });
-    }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, campaign_id: resolvedCampaignId });
   } catch (err: any) {
     console.error("API Error updating campaign assets:", err);
     return NextResponse.json({ error: err.message }, { status: 500 });

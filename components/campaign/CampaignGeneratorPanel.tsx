@@ -6,6 +6,8 @@ import { SongService } from "@/services/song-service";
 import { AlbumService } from "@/services/album-service";
 import { CampaignService } from "@/services/campaign-service";
 import { AssetService } from "@/services/asset-service";
+import { AssetType } from "@/types/enums";
+import { ProfileService } from "@/services/profile-service";
 import { 
   generateFullCampaign, 
   generateCampaignHook,
@@ -13,8 +15,15 @@ import {
 } from "@/services/aiCampaignGenerator";
 import { generateSongCoverConcept } from "@/services/coverGenerator";
 import { generateReelThumbnailVisual, generateVideoPrompt } from "@/services/videoPromptGenerator";
-import { Loader2, RefreshCw, Save, Image as ImageIcon, Video, FileText } from "lucide-react";
+import { GoogleImageGeneration, ImageGenerationResult } from "@/services/googleImageGeneration";
+import { GoogleVideoGeneration, VideoGenerationResult } from "@/services/googleVideoGeneration";
+import { 
+  Loader2, RefreshCw, Save, Image as ImageIcon, Video, FileText, 
+  Sparkles, CheckCircle2, AlertCircle
+} from "lucide-react";
 import { useRouter } from "next/navigation";
+import { CampaignActionButtons } from "./CampaignActionButtons";
+import { GeneratedAssetPreview } from "./GeneratedAssetPreview";
 
 export function CampaignGeneratorPanel({ initialSongId }: { initialSongId?: string }) {
   const router = useRouter();
@@ -29,7 +38,7 @@ export function CampaignGeneratorPanel({ initialSongId }: { initialSongId?: stri
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Generated state
+  // Generated text state
   const [hook, setHook] = useState("");
   const [caption, setCaption] = useState("");
   const [hashtags, setHashtags] = useState("");
@@ -37,6 +46,19 @@ export function CampaignGeneratorPanel({ initialSongId }: { initialSongId?: stri
   const [campaignConcept, setCampaignConcept] = useState("");
   const [songCoverPrompt, setSongCoverPrompt] = useState("");
   const [reelVisualPrompt, setReelVisualPrompt] = useState("");
+
+  // Media generation state
+  const [generatingCoverImage, setGeneratingCoverImage] = useState(false);
+  const [generatingReelImage, setGeneratingReelImage] = useState(false);
+  const [generatingVideo, setGeneratingVideo] = useState(false);
+  const [coverImageResult, setCoverImageResult] = useState<ImageGenerationResult | null>(null);
+  const [reelImageResult, setReelImageResult] = useState<ImageGenerationResult | null>(null);
+  const [videoResult, setVideoResult] = useState<VideoGenerationResult | null>(null);
+
+  // Asset save state
+  const [coverSaved, setCoverSaved] = useState(false);
+  const [reelSaved, setReelSaved] = useState(false);
+  const [videoSaved, setVideoSaved] = useState(false);
 
   const [lastSavedId, setLastSavedId] = useState<string | null>(null);
 
@@ -64,11 +86,21 @@ export function CampaignGeneratorPanel({ initialSongId }: { initialSongId?: stri
       }
       try {
         setLoading(true);
+        // Reset media state on song change
+        setCoverImageResult(null);
+        setReelImageResult(null);
+        setVideoResult(null);
+        setCoverSaved(false);
+        setReelSaved(false);
+        setVideoSaved(false);
+
         const s = await SongService.getById(selectedSongId);
         setSong(s);
-        if (s.album_id) {
+        if (s && s.album_id) {
           const a = await AlbumService.getById(s.album_id);
           setAlbum(a);
+        } else {
+          setAlbum(null);
         }
         
         const campaigns = await CampaignService.getAll();
@@ -85,7 +117,14 @@ export function CampaignGeneratorPanel({ initialSongId }: { initialSongId?: stri
   }, [selectedSongId]);
 
   const handleGenerateAll = async () => {
-    if (!song || !album) return;
+    if (!song) {
+      alert("Error: No se ha cargado la canción.");
+      return;
+    }
+    if (!album) {
+      alert("Error: Esta canción no tiene un álbum asociado o no se ha podido cargar el álbum.");
+      return;
+    }
     setGenerating(true);
     try {
       const params = { song, album, existingCampaigns: [] };
@@ -125,14 +164,136 @@ export function CampaignGeneratorPanel({ initialSongId }: { initialSongId?: stri
   const handleRegenerateCover = async () => {
     if (!song || !album) return;
     setSongCoverPrompt("...");
+    setCoverImageResult(null);
+    setCoverSaved(false);
     setSongCoverPrompt(await generateSongCoverConcept({ song, album }));
   };
 
   const handleRegenerateReel = async () => {
     if (!song || !album) return;
     setReelVisualPrompt("...");
+    setReelImageResult(null);
+    setReelSaved(false);
     setReelVisualPrompt(await generateReelThumbnailVisual({ song, album }));
   };
+
+  // ════════════════════════════════════════════
+  // Google Media Generation Handlers
+  // ════════════════════════════════════════════
+
+  const handleGenerateCoverImage = async () => {
+    if (!songCoverPrompt) return;
+    setGeneratingCoverImage(true);
+    try {
+      const result = await GoogleImageGeneration.generateSongCover(songCoverPrompt);
+      setCoverImageResult(result);
+    } catch (e: any) {
+      alert("Image generation error: " + e.message);
+    } finally {
+      setGeneratingCoverImage(false);
+    }
+  };
+
+  const handleGenerateReelImage = async () => {
+    if (!reelVisualPrompt) return;
+    setGeneratingReelImage(true);
+    try {
+      const result = await GoogleImageGeneration.generateReelThumbnail(reelVisualPrompt);
+      setReelImageResult(result);
+    } catch (e: any) {
+      alert("Image generation error: " + e.message);
+    } finally {
+      setGeneratingReelImage(false);
+    }
+  };
+
+  const handleGenerateVideo = async () => {
+    if (!videoPrompt) return;
+    setGeneratingVideo(true);
+    try {
+      const result = await GoogleVideoGeneration.generateCampaignVideo(videoPrompt);
+      setVideoResult(result);
+    } catch (e: any) {
+      alert("Video generation error: " + e.message);
+    } finally {
+      setGeneratingVideo(false);
+    }
+  };
+
+  // ════════════════════════════════════════════
+  // Save Asset Handlers
+  // ════════════════════════════════════════════
+
+  const handleSaveCoverAsset = async () => {
+    if (!coverImageResult || !song) return;
+    try {
+      await AssetService.uploadFromDataUrl(
+        coverImageResult.imageUrl,
+        `${song.title}_cover_ai.png`,
+        AssetType.SONG_COVER,
+        song.id,
+        {
+          prompt: coverImageResult.prompt,
+          source: 'ai_generated',
+          provider: 'google',
+          model: coverImageResult.model,
+          generatedAt: coverImageResult.generatedAt,
+        }
+      );
+      setCoverSaved(true);
+    } catch (e: any) {
+      alert("Failed to save asset: " + e.message);
+    }
+  };
+
+  const handleSaveReelAsset = async () => {
+    if (!reelImageResult || !song) return;
+    try {
+      await AssetService.uploadFromDataUrl(
+        reelImageResult.imageUrl,
+        `${song.title}_reel_ai.png`,
+        AssetType.REEL_VISUAL,
+        song.id,
+        {
+          prompt: reelImageResult.prompt,
+          source: 'ai_generated',
+          provider: 'google',
+          model: reelImageResult.model,
+          generatedAt: reelImageResult.generatedAt,
+        }
+      );
+      setReelSaved(true);
+    } catch (e: any) {
+      alert("Failed to save asset: " + e.message);
+    }
+  };
+
+  const handleSaveVideoAsset = async () => {
+    if (!videoResult || !song) return;
+    try {
+      await AssetService.uploadFromDataUrl(
+        videoResult.videoUrl,
+        `${song.title}_video_ai.mp4`,
+        AssetType.CAMPAIGN_VIDEO,
+        song.id,
+        {
+          prompt: videoResult.prompt,
+          source: 'ai_generated',
+          provider: 'google',
+          model: videoResult.model,
+          durationSeconds: videoResult.durationSeconds,
+          generatedAt: videoResult.generatedAt,
+        }
+      );
+      setVideoSaved(true);
+    } catch (e: any) {
+      alert("Failed to save asset: " + e.message);
+    }
+  };
+
+  // ════════════════════════════════════════════
+  // Save Campaign
+  // ════════════════════════════════════════════
 
   const handleSave = async () => {
     if (!song) return;
@@ -140,16 +301,9 @@ export function CampaignGeneratorPanel({ initialSongId }: { initialSongId?: stri
     try {
       let campaignId = activeCampaign?.id;
       if (!campaignId) {
-        // start a new campaign if none exists
         campaignId = await CampaignService.startNew(song.id);
       }
 
-      // We need to update the campaign with the newly generated content
-      // Note: we can use a direct supabase call here or a custom service method.
-      // Assuming we extended Campaign interface, we use a raw patch via CampaignService if we need to.
-      // But we don't have update function in CampaignService that modifies arbitrary fields.
-      // Let's implement an API route or just use the Supabase client.
-      
       const res = await fetch("/api/campaigns/update-assets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -166,7 +320,10 @@ export function CampaignGeneratorPanel({ initialSongId }: { initialSongId?: stri
         })
       });
 
-      if (!res.ok) throw new Error("Failed to save campaign assets");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Failed to save campaign assets");
+      }
       
       setLastSavedId(campaignId);
       alert("Campaign assets saved successfully!");
@@ -196,7 +353,8 @@ export function CampaignGeneratorPanel({ initialSongId }: { initialSongId?: stri
       </div>
 
       {song && album && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 relative z-10">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 relative z-10">
+          {/* Left Column: Creative Context */}
           <div className="space-y-6">
             <div className="glass p-6 rounded-3xl border border-white/5">
               <h3 className="text-xl font-bold mb-2 tracking-tighter">Creative Context</h3>
@@ -223,15 +381,47 @@ export function CampaignGeneratorPanel({ initialSongId }: { initialSongId?: stri
               disabled={generating}
               className="w-full h-14 bg-white text-zinc-950 font-black tracking-widest uppercase text-sm rounded-2xl shadow-[0_0_20px_rgba(255,255,255,0.2)] hover:bg-zinc-200 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
             >
-              {generating ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
-              {generating ? "Generating..." : "Generate Campaign Assets"}
+              {generating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
+              {generating ? "Generating..." : "Generate All Campaign Assets"}
             </button>
+
+            {/* Generation Status Summary */}
+            {(hook || coverImageResult || reelImageResult || videoResult) && (
+              <div className="glass p-4 rounded-2xl border border-white/5 space-y-2">
+                <h4 className="text-[10px] uppercase font-bold tracking-widest text-white/40 mb-3 flex items-center gap-2">
+                  <Sparkles className="w-3 h-3" /> Generation Status
+                </h4>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { label: 'Prompts', done: !!hook },
+                    { label: 'Cover Image', done: !!coverImageResult },
+                    { label: 'Reel Visual', done: !!reelImageResult },
+                    { label: 'Campaign Video', done: !!videoResult },
+                    { label: 'Cover Saved', done: coverSaved },
+                    { label: 'Reel Saved', done: reelSaved },
+                    { label: 'Video Saved', done: videoSaved },
+                    { label: 'Campaign Saved', done: !!lastSavedId },
+                  ].map(item => (
+                    <div key={item.label} className="flex items-center gap-2 text-[10px] font-bold">
+                      {item.done ? (
+                        <CheckCircle2 className="w-3 h-3 text-green-400" />
+                      ) : (
+                        <div className="w-3 h-3 rounded-full border border-white/20" />
+                      )}
+                      <span className={item.done ? 'text-green-400' : 'text-white/30'}>{item.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
+          {/* Right Column: Generated Outputs */}
           <div className="space-y-6">
             {(hook || generating) && (
               <div className="glass p-6 rounded-3xl border border-white/5 space-y-6 slide-in-from-right-8 animate-in">
                 
+                {/* Campaign Hook */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <label className="text-[10px] uppercase font-bold text-white/40 tracking-widest flex items-center gap-2">
@@ -247,6 +437,7 @@ export function CampaignGeneratorPanel({ initialSongId }: { initialSongId?: stri
                   )}
                 </div>
 
+                {/* Caption */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <label className="text-[10px] uppercase font-bold text-white/40 tracking-widest flex items-center gap-2">
@@ -262,6 +453,7 @@ export function CampaignGeneratorPanel({ initialSongId }: { initialSongId?: stri
                   )}
                 </div>
 
+                {/* Hashtags */}
                 <div>
                   <label className="text-[10px] uppercase font-bold text-white/40 tracking-widest flex items-center gap-2 mb-2">
                     <FileText className="w-3 h-3" /> Hashtags
@@ -274,48 +466,110 @@ export function CampaignGeneratorPanel({ initialSongId }: { initialSongId?: stri
                   )}
                 </div>
 
-                <div>
-                  <label className="text-[10px] uppercase font-bold text-white/40 tracking-widest flex items-center gap-2 mb-2">
-                    <Video className="w-3 h-3" /> Video Prompt (Runway/Sora/Kling)
-                  </label>
-                  {generating ? <div className="h-16 bg-white/5 animate-pulse rounded-xl" /> : (
-                    <textarea 
-                      value={videoPrompt} onChange={e => setVideoPrompt(e.target.value)}
-                      className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-sm text-white/80 focus:outline-none focus:border-white/30"
-                    />
-                  )}
-                </div>
-
-                <div>
+                {/* ═══════ Song Cover Concept (with action buttons) ═══════ */}
+                <div className="border-t border-white/5 pt-6">
                   <div className="flex items-center justify-between mb-2">
-                    <label className="text-[10px] uppercase font-bold text-white/40 tracking-widest flex items-center gap-2 mb-2">
+                    <label className="text-[10px] uppercase font-bold text-white/40 tracking-widest flex items-center gap-2">
                       <ImageIcon className="w-3 h-3" /> Song Cover Concept
                     </label>
                     <button onClick={handleRegenerateCover} className="text-[10px] uppercase font-bold text-blue-400 hover:text-blue-300">Regenerate</button>
                   </div>
                   {generating ? <div className="h-16 bg-white/5 animate-pulse rounded-xl" /> : (
-                    <textarea 
-                      value={songCoverPrompt} onChange={e => setSongCoverPrompt(e.target.value)}
-                      className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-sm text-white/80 focus:outline-none focus:border-white/30"
-                    />
+                    <>
+                      <textarea 
+                        value={songCoverPrompt} onChange={e => setSongCoverPrompt(e.target.value)}
+                        className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-sm text-white/80 focus:outline-none focus:border-white/30"
+                      />
+                      <CampaignActionButtons
+                        type="image"
+                        prompt={songCoverPrompt}
+                        onGenerate={handleGenerateCoverImage}
+                        onSaveAsset={handleSaveCoverAsset}
+                        isGenerating={generatingCoverImage}
+                        isGenerated={!!coverImageResult}
+                        isSaved={coverSaved}
+                      />
+                      <GeneratedAssetPreview
+                        type="image"
+                        url={coverImageResult?.imageUrl || null}
+                        prompt={songCoverPrompt}
+                        model={coverImageResult?.model}
+                        generatedAt={coverImageResult?.generatedAt}
+                        isPlaceholder={coverImageResult?.model?.includes('dev')}
+                      />
+                    </>
                   )}
                 </div>
 
-                <div>
+                {/* ═══════ Reel Thumbnail Visual (with action buttons) ═══════ */}
+                <div className="border-t border-white/5 pt-6">
                   <div className="flex items-center justify-between mb-2">
-                    <label className="text-[10px] uppercase font-bold text-white/40 tracking-widest flex items-center gap-2 mb-2">
+                    <label className="text-[10px] uppercase font-bold text-white/40 tracking-widest flex items-center gap-2">
                       <ImageIcon className="w-3 h-3" /> Reel Thumbnail Visual
                     </label>
                     <button onClick={handleRegenerateReel} className="text-[10px] uppercase font-bold text-blue-400 hover:text-blue-300">Regenerate</button>
                   </div>
                   {generating ? <div className="h-16 bg-white/5 animate-pulse rounded-xl" /> : (
-                    <textarea 
-                      value={reelVisualPrompt} onChange={e => setReelVisualPrompt(e.target.value)}
-                      className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-sm text-white/80 focus:outline-none focus:border-white/30"
-                    />
+                    <>
+                      <textarea 
+                        value={reelVisualPrompt} onChange={e => setReelVisualPrompt(e.target.value)}
+                        className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-sm text-white/80 focus:outline-none focus:border-white/30"
+                      />
+                      <CampaignActionButtons
+                        type="image"
+                        prompt={reelVisualPrompt}
+                        onGenerate={handleGenerateReelImage}
+                        onSaveAsset={handleSaveReelAsset}
+                        isGenerating={generatingReelImage}
+                        isGenerated={!!reelImageResult}
+                        isSaved={reelSaved}
+                      />
+                      <GeneratedAssetPreview
+                        type="image"
+                        url={reelImageResult?.imageUrl || null}
+                        prompt={reelVisualPrompt}
+                        model={reelImageResult?.model}
+                        generatedAt={reelImageResult?.generatedAt}
+                        isPlaceholder={reelImageResult?.model?.includes('dev')}
+                      />
+                    </>
                   )}
                 </div>
 
+                {/* ═══════ Video Prompt (with action buttons) ═══════ */}
+                <div className="border-t border-white/5 pt-6">
+                  <label className="text-[10px] uppercase font-bold text-white/40 tracking-widest flex items-center gap-2 mb-2">
+                    <Video className="w-3 h-3" /> Video Prompt (Google Veo)
+                  </label>
+                  {generating ? <div className="h-16 bg-white/5 animate-pulse rounded-xl" /> : (
+                    <>
+                      <textarea 
+                        value={videoPrompt} onChange={e => setVideoPrompt(e.target.value)}
+                        className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-sm text-white/80 focus:outline-none focus:border-white/30"
+                      />
+                      <CampaignActionButtons
+                        type="video"
+                        prompt={videoPrompt}
+                        onGenerate={handleGenerateVideo}
+                        onSaveAsset={handleSaveVideoAsset}
+                        isGenerating={generatingVideo}
+                        isGenerated={!!videoResult}
+                        isSaved={videoSaved}
+                      />
+                      <GeneratedAssetPreview
+                        type="video"
+                        url={videoResult?.videoUrl || null}
+                        prompt={videoPrompt}
+                        model={videoResult?.model}
+                        generatedAt={videoResult?.generatedAt}
+                        isPlaceholder={videoResult?.model?.includes('dev')}
+                        hue={videoResult ? 280 : undefined}
+                      />
+                    </>
+                  )}
+                </div>
+
+                {/* Save Campaign Button */}
                 <div className="pt-4 border-t border-white/10">
                   <button 
                     onClick={handleSave}

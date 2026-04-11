@@ -21,6 +21,7 @@ export function CreativeDNAEditor({ title = "Creative DNA", fields, data, onSave
   const [formData, setFormData] = useState<Record<string, any>>({ ...data });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [generatingField, setGeneratingField] = useState<string | null>(null);
 
   const handleChange = (key: string, value: any) => {
     setFormData(prev => ({ ...prev, [key]: value }));
@@ -44,6 +45,27 @@ export function CreativeDNAEditor({ title = "Creative DNA", fields, data, onSave
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleGenerateField = async (fieldKey: string) => {
+    setGeneratingField(fieldKey);
+    // Simulate AI generation time
+    await new Promise(r => setTimeout(r, 1500));
+    const mocks: Record<string, string | string[]> = {
+      narrative_summary: "An atmospheric exploration of late-night thoughts and sudden awakenings, weaving between melancholic solitude and quiet epiphanies.",
+      visual_identity: "Midnight blues transitioning into harsh, striking neon colors. Heavy use of film grain and blurred lights.",
+      canonical_phrase: "Silence is the loudest scream.",
+      visual_keywords: ["neon", "midnight", "isolation", "rain", "glass"],
+      emotional_direction: "Starting in vulnerability and slowly building into a profound sense of self-acceptance and power.",
+      prompt_notes: "Focus on cinematic lighting, high contrast, avoiding daylight or overly cheerful aesthetics.",
+      emotional_summary: "The fleeting moment of clarity that happens completely alone in the dark.",
+      themes: ["vulnerability", "epiphany", "solitude"],
+      symbolism: ["mirrors", "shattered glass", "distant headlights"],
+      campaign_tone: "Introspective, cinematic, highly aestheticized."
+    };
+    
+    handleChange(fieldKey, mocks[fieldKey] || "Generated AI content for this field...");
+    setGeneratingField(null);
   };
 
   return (
@@ -76,38 +98,56 @@ export function CreativeDNAEditor({ title = "Creative DNA", fields, data, onSave
       </div>
 
       <div className="space-y-5">
-        {fields.map(field => (
-          <div key={field.key} className="space-y-1.5">
-            <label className="text-[10px] text-white/30 uppercase font-bold tracking-widest">
-              {field.label}
-            </label>
-            {field.type === "textarea" ? (
-              <textarea
-                value={formData[field.key] || ""}
-                onChange={e => handleChange(field.key, e.target.value)}
-                placeholder={field.placeholder || `Enter ${field.label.toLowerCase()}...`}
-                rows={3}
-                className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-sm text-white placeholder:text-white/15 focus:outline-none focus:border-white/30 transition-colors resize-none"
-              />
-            ) : field.type === "tags" ? (
-              <input
-                type="text"
-                value={(formData[field.key] as string[] || []).join(", ")}
-                onChange={e => handleTagsChange(field.key, e.target.value)}
-                placeholder={field.placeholder || "tag1, tag2, tag3..."}
-                className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-sm text-white placeholder:text-white/15 focus:outline-none focus:border-white/30 transition-colors"
-              />
-            ) : (
-              <input
-                type="text"
-                value={formData[field.key] || ""}
-                onChange={e => handleChange(field.key, e.target.value)}
-                placeholder={field.placeholder || `Enter ${field.label.toLowerCase()}...`}
-                className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-sm text-white placeholder:text-white/15 focus:outline-none focus:border-white/30 transition-colors"
-              />
-            )}
-          </div>
-        ))}
+        {fields.map(field => {
+          const value = formData[field.key];
+          const isEmpty = !value || (Array.isArray(value) && value.length === 0);
+          
+          return (
+            <div key={field.key} className="space-y-1.5 relative">
+              <div className="flex items-center justify-between mb-1">
+                <label className={`text-[10px] uppercase font-bold tracking-widest ${isEmpty ? "text-red-400" : "text-white/30"}`}>
+                  {field.label} {isEmpty && <span className="ml-1 text-[8px] px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-300">Missing</span>}
+                </label>
+                {isEmpty && (
+                  <button
+                    onClick={() => handleGenerateField(field.key)}
+                    disabled={generatingField === field.key}
+                    className="flex items-center gap-1.5 px-2 py-1 rounded bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 text-[9px] font-bold uppercase tracking-widest transition-colors"
+                  >
+                    {generatingField === field.key ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                    Generate
+                  </button>
+                )}
+              </div>
+              
+              {field.type === "textarea" ? (
+                <textarea
+                  value={value || ""}
+                  onChange={e => handleChange(field.key, e.target.value)}
+                  placeholder={field.placeholder || `Enter ${field.label.toLowerCase()}...`}
+                  rows={3}
+                  className={`w-full px-4 py-3 rounded-xl bg-white/5 text-sm text-white placeholder:text-white/15 focus:outline-none transition-colors resize-none ${isEmpty ? "border border-red-500/50 shadow-[0_0_10px_rgba(239,68,68,0.1)] focus:border-red-400" : "border border-white/10 focus:border-white/30"}`}
+                />
+              ) : field.type === "tags" ? (
+                <input
+                  type="text"
+                  value={(value as string[] || []).join(", ")}
+                  onChange={e => handleTagsChange(field.key, e.target.value)}
+                  placeholder={field.placeholder || "tag1, tag2, tag3..."}
+                  className={`w-full px-4 py-3 rounded-xl bg-white/5 text-sm text-white placeholder:text-white/15 focus:outline-none transition-colors ${isEmpty ? "border border-red-500/50 shadow-[0_0_10px_rgba(239,68,68,0.1)] focus:border-red-400" : "border border-white/10 focus:border-white/30"}`}
+                />
+              ) : (
+                <input
+                  type="text"
+                  value={value || ""}
+                  onChange={e => handleChange(field.key, e.target.value)}
+                  placeholder={field.placeholder || `Enter ${field.label.toLowerCase()}...`}
+                  className={`w-full px-4 py-3 rounded-xl bg-white/5 text-sm text-white placeholder:text-white/15 focus:outline-none transition-colors ${isEmpty ? "border border-red-500/50 shadow-[0_0_10px_rgba(239,68,68,0.1)] focus:border-red-400" : "border border-white/10 focus:border-white/30"}`}
+                />
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

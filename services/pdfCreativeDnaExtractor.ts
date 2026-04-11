@@ -66,62 +66,54 @@ export class PdfCreativeDnaExtractor {
     let albumUpdates: any = {};
     let songRows: any[] = [];
     
-    // Attempt tracking list via regex over the whole text block
-    // Look for tracklist section until "Song Creative DNA"
-    const tracklistRegex = /Tracklist[\s\S]*?Song\s*Title([\s\S]+?)(?:\d+\.\s+Song\s+Creative\s+DNA|\bSong\s+Creative\s+DNA\b|(?=\s*$))/i;
-    const tracklistMatch = text.match(tracklistRegex);
-    
-    if (tracklistMatch) {
-      const tracksString = tracklistMatch[1];
-      // Regex to find things like "1 Prologue in Yellow" 
-      // where 1 is a number, followed by spaces/newlines, followed by words, until another number or end
-      const regex = /(\d+)[\s\n]+([^\d]+?)(?=[\s\n]+\d+[\s\n]+[A-Z]|\s*$)/g;
-      let match;
-      while ((match = regex.exec(tracksString)) !== null) {
-        if (match[2].trim()) {
-           songRows.push({
-             trackNumber: parseInt(match[1]),
-             songTitle: match[2].replace(/\n/g, ' ').trim(),
-             action: 'create',
-             warnings: []
-           });
-        }
-      }
+    // Extract song DNA
+    // 1. First, isolate the main Song Creative DNA section to avoid grabbing Tracklist rows
+    let dnaSection = "";
+    const dnaSectionMatch = text.match(/8\.?\s*Song\s*Creative\s*DNA([\s\S]+)/i) || text.match(/Song\s*Creative\s*DNA([\s\S]+)/i);
+    if (dnaSectionMatch) {
+       dnaSection = dnaSectionMatch[1];
+    } else {
+       dnaSection = text;
     }
 
-    // Now attempt to extract "Song Creative DNA" for each track if present
-    for (const song of songRows) {
-      // Find the block for this specific song
-      // It starts with Track X to Track X+1 or end of string
-      const currentTrackLabel = `Track\\s+${song.trackNumber}\\b`;
-      const nextTrackLabel = `(?:Track\\s+${song.trackNumber + 1}\\b|$)`;
-      const blockRegex = new RegExp(`${currentTrackLabel}([\\s\\S]+?)(?=${nextTrackLabel})`, "is");
+    // 2. Split the DNA section by "Song Title" to perfectly isolate each song block.
+    const dnaChunks = dnaSection.split(/Song\s*Title/i);
+    
+    // dnaChunks[0] is garbage before the first song title.
+    let trackIndex = 1;
+    for (let i = 1; i < dnaChunks.length; i++) {
+      const chunk = dnaChunks[i];
       
-      const blockMatch = text.match(blockRegex);
-      if (blockMatch) {
-         const block = blockMatch[1];
-         
-         const emoMatch = block.match(/Emotional Summary([\s\S]+?)(?=Themes|Symbolism|Visual|Campaign|Prompt|$)/i);
-         if (emoMatch) song.emotionalSummary = emoMatch[1].replace(/\n/g, ' ').trim();
+      const tMatch = chunk.match(/^\s*([\s\S]+?)(?=\s*Emotional\s*Summary|$)/i);
+      if (!tMatch) continue;
 
-         const themesMatch = block.match(/Themes([\s\S]+?)(?=Symbolism|Visual|Campaign|Prompt|$)/i);
-         if (themesMatch) song.themes = themesMatch[1].replace(/\n/g, ' ').split(',').map((s: string) => s.trim());
+      const songTitle = tMatch[1].replace(/\n/g, ' ').trim();
+      const cleanTitle = songTitle.replace(/—\s*Track\s*\d+/i, '').trim();
 
-         const symMatch = block.match(/Symbolism([\s\S]+?)(?=Visual|Campaign|Prompt|$)/i);
-         if (symMatch) song.symbolism = symMatch[1].replace(/\n/g, ' ').split(',').map((s: string) => s.trim());
+      const emoMatch = chunk.match(/Emotional\s*Summary\s*([\s\S]+?)(?=Themes|Symbolism|Visual\s*Identity|Campaign\s*Tone|Prompt\s*Notes|$)/i);
+      const themesMatch = chunk.match(/Themes\s*([\s\S]+?)(?=Symbolism|Visual\s*Identity|Campaign\s*Tone|Prompt\s*Notes|$)/i);
+      const symMatch = chunk.match(/Symbolism\s*([\s\S]+?)(?=Visual\s*Identity|Campaign\s*Tone|Prompt\s*Notes|$)/i);
+      const visMatch = chunk.match(/Visual\s*Identity\s*([\s\S]+?)(?=Campaign\s*Tone|Prompt\s*Notes|$)/i);
+      const toneMatch = chunk.match(/Campaign\s*Tone\s*([\s\S]+?)(?=Prompt\s*Notes|$)/i);
+      
+      // Stop prompt notes before any stray headers that might leak in from the next section if present
+      const promptMatch = chunk.match(/Prompt\s*Notes\s*([\s\S]+?)(?=\b8\.?\s*Song\s*Creative\s*DNA\b|\bSong\s*Creative\s*DNA\b|$)/i);
 
-         const visMatch = block.match(/Visual Identity([\s\S]+?)(?=Campaign|Prompt|$)/i);
-         if (visMatch) song.visualIdentity = visMatch[1].replace(/\n/g, ' ').trim();
-
-         const toneMatch = block.match(/Campaign Tone([\s\S]+?)(?=Prompt|$)/i);
-         if (toneMatch) song.campaignTone = toneMatch[1].replace(/\n/g, ' ').trim();
-
-         const promptMatch = block.match(/Prompt Notes([\s\S]+?)(?=$)/i);
-         if (promptMatch) song.promptNotes = promptMatch[1].replace(/\n/g, ' ').trim();
-      }
+      songRows.push({
+        trackNumber: trackIndex++,
+        songTitle: cleanTitle,
+        emotionalSummary: emoMatch ? emoMatch[1].replace(/\n/g, ' ').trim() : "",
+        themes: themesMatch ? themesMatch[1].replace(/\n/g, ' ').split(',').map((s: string) => s.trim()).filter(Boolean) : [],
+        symbolism: symMatch ? symMatch[1].replace(/\n/g, ' ').split(',').map((s: string) => s.trim()).filter(Boolean) : [],
+        visualIdentity: visMatch ? visMatch[1].replace(/\n/g, ' ').trim() : "",
+        campaignTone: toneMatch ? toneMatch[1].replace(/\n/g, ' ').trim() : "",
+        promptNotes: promptMatch ? promptMatch[1].replace(/\n/g, ' ').trim() : "",
+        action: 'create',
+        warnings: []
+      });
     }
-    
-    // Extract album level data
+
+    // Pass dnaChunks[0] (which is the document start) to extract Album level data
     const titleMatch = text.match(/Album Title\s*([\s\S]+?)(?=Era|Year|Core Emotion|$)/i);
     if (titleMatch) albumUpdates.albumTitle = titleMatch[1].replace(/\n/g, ' ').trim();
 

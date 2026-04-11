@@ -81,21 +81,37 @@ export default function ImportPage() {
       if (!profile) throw new Error("Could not find active profile to assign ownership.");
 
       let albumId = preview.existingAlbumId;
+      const allExistingAlbums = await AlbumService.getAll();
+      const duplicateByTitle = allExistingAlbums.find(a => a.title.toLowerCase() === preview.inferredAlbumTitle.trim().toLowerCase());
 
-      // 1. Create or Update Album
-      if (preview.status === 'new' || !albumId) {
-        const newAlbum = await AlbumService.create({
-          owner_id: profile.id,
-          title: preview.inferredAlbumTitle,
-          slug: preview.inferredAlbumTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now(),
-          era: SongEra.PRESENT,
-          drive_folder_id: preview.folderId,
-        });
-        albumId = newAlbum.id;
-      } else {
+      if (duplicateByTitle) {
+        if (!window.confirm(`El álbum "${preview.inferredAlbumTitle}" ya existe en la base de datos. Para no generar duplicados, se actualizará el álbum existente. ¿Estás seguro de que deseas continuar?`)) {
+          setImporting(false);
+          return;
+        }
+        // Force the use of the duplicate album ID, override "new" status
+        albumId = duplicateByTitle.id;
         await AlbumService.update(albumId, {
           drive_folder_id: preview.folderId
         });
+      } else {
+        // 1. Create Album if it truly does not exist
+        if (preview.status === 'new' || !albumId) {
+          const newAlbum = await AlbumService.create({
+            owner_id: profile.id,
+            title: preview.inferredAlbumTitle.trim(),
+            slug: preview.inferredAlbumTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now(),
+            era: SongEra.PRESENT,
+            drive_folder_id: preview.folderId,
+          });
+          albumId = newAlbum.id;
+        } else {
+          // It's an update but title was changed completely? (very edge case)
+          await AlbumService.update(albumId, {
+            drive_folder_id: preview.folderId,
+            title: preview.inferredAlbumTitle.trim()
+          });
+        }
       }
 
       if (!albumId) throw new Error("Failed to resolve Album ID.");
@@ -128,10 +144,16 @@ export default function ImportPage() {
       for (const track of preview.trackCandidates) {
         if (track.status === 'skip') continue;
 
+        let songCoverPath = undefined;
+        if (track.coverCandidate) {
+           songCoverPath = `https://drive.google.com/thumbnail?id=${track.coverCandidate.driveFile.id}&sz=w1000`;
+        }
+
         if (track.status === 'update' && track.existingSongId) {
           await SongService.update(track.existingSongId, {
             drive_file_id: track.driveFile.id,
-            audio_path: track.driveFile.webContentLink
+            audio_path: track.driveFile.webContentLink,
+            ...(songCoverPath ? { cover_path: songCoverPath } : {})
           });
         } else {
           await SongService.create({
@@ -143,7 +165,8 @@ export default function ImportPage() {
             drive_file_id: track.driveFile.id,
             audio_path: track.driveFile.webContentLink,
             era: finalEra,
-            release_status: ReleaseStatus.UNRELEASED
+            release_status: ReleaseStatus.UNRELEASED,
+            cover_path: songCoverPath
           });
         }
       }

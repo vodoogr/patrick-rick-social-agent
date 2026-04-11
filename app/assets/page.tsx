@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 const typeIcons: Record<AssetType, any> = {
   [AssetType.IMAGE]: ImageIcon,
   [AssetType.VIDEO]: Video,
+  [AssetType.CAMPAIGN_VIDEO]: Video,
   [AssetType.AUDIO]: Music,
   [AssetType.SUBTITLE]: FileText,
   [AssetType.THUMBNAIL]: ImageIcon,
@@ -81,7 +82,11 @@ export default function AssetsPage() {
               <div key={asset.id} className="group glass border border-white/5 rounded-[2rem] overflow-hidden hover:border-white/20 transition-all">
                 <div className="aspect-square bg-white/5 flex items-center justify-center relative overflow-hidden">
                   {[AssetType.IMAGE, AssetType.COVER, AssetType.SONG_COVER, AssetType.REEL_VISUAL].includes(asset.asset_type) ? (
-                    <img src={asset.storage_path} alt={asset.file_name || ""} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+                    <img 
+                      src={asset.storage_path.startsWith('http') || asset.storage_path.startsWith('data:') ? asset.storage_path : AssetService.getPublicUrl(asset.storage_path)} 
+                      alt={asset.file_name || ""} 
+                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" 
+                    />
                   ) : (
                     <Icon className="w-12 h-12 text-white/20" />
                   )}

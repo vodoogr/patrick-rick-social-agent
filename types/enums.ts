@@ -47,6 +47,7 @@ export enum AssetType {
   SONG_COVER = 'song_cover',
   IMAGE = 'image',
   VIDEO = 'video',
+  CAMPAIGN_VIDEO = 'campaign_video',
   SUBTITLE = 'subtitle',
   THUMBNAIL = 'thumbnail',
   REEL_VISUAL = 'reel_visual',
