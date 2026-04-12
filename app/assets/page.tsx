@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Image as ImageIcon, Video, Music, FileText, Search, Plus, Filter, MoreVertical, Download, Trash2 } from "lucide-react";
+import { Image as ImageIcon, Video, Music, FileText, Search, Plus, Filter, MoreVertical, Download, Trash2, Eye, X } from "lucide-react";
 import { AssetService } from "@/services/asset-service";
 import { Asset, AssetType } from "@/types";
 import { LoadingState } from "@/components/ui/LoadingState";
@@ -26,6 +26,7 @@ export default function AssetsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<AssetType | "ALL">("ALL");
+  const [previewAsset, setPreviewAsset] = useState<Asset | null>(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -119,14 +120,23 @@ export default function AssetsPage() {
                   )}
                   <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
                      <button 
-                        onClick={() => handleDownload(asset)}
+                        onClick={() => setPreviewAsset(asset)}
                         className="p-3 rounded-full bg-white text-black hover:scale-110 transition-transform"
+                        title="Preview"
+                     >
+                        <Eye className="w-5 h-5" />
+                     </button>
+                     <button 
+                        onClick={() => handleDownload(asset)}
+                        className="p-3 rounded-full bg-white/10 text-white hover:bg-white/20 hover:scale-110 transition-all border border-white/10"
+                        title="Download"
                      >
                         <Download className="w-5 h-5" />
                      </button>
                      <button 
                         onClick={() => handleDelete(asset)}
-                        className="p-3 rounded-full bg-white/10 text-white hover:bg-red-500 transition-colors"
+                        className="p-3 rounded-full bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all border border-red-500/20"
+                        title="Delete"
                      >
                         <Trash2 className="w-5 h-5" />
                      </button>
@@ -147,6 +157,66 @@ export default function AssetsPage() {
           description={filter !== "ALL" ? `No assets found for type ${filter}.` : "Start by uploading source audio or branding assets for Patrick Rick's eras."}
           action={filter !== "ALL" ? { label: "Show All", onClick: () => setFilter("ALL") } : undefined}
         />
+      )}
+
+      {/* Preview Modal */}
+      {previewAsset && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/95 backdrop-blur-md animate-in fade-in duration-300">
+          <button 
+            onClick={() => setPreviewAsset(null)}
+            className="absolute top-6 right-6 p-3 rounded-full bg-white/5 text-white hover:bg-white/10 transition-colors"
+          >
+            <X className="w-6 h-6" />
+          </button>
+          
+          <div className="max-w-5xl w-full max-h-[90vh] flex flex-col items-center gap-6">
+            <div className="relative w-full h-full flex items-center justify-center rounded-3xl overflow-hidden border border-white/10 glass shadow-2xl">
+              {[AssetType.IMAGE, AssetType.COVER, AssetType.SONG_COVER, AssetType.REEL_VISUAL].includes(previewAsset.asset_type) ? (
+                <img 
+                  src={previewAsset.storage_path.startsWith('http') || previewAsset.storage_path.startsWith('data:') ? previewAsset.storage_path : AssetService.getPublicUrl(previewAsset.storage_path)} 
+                  alt={previewAsset.file_name || ""} 
+                  className="max-w-full max-h-[70vh] object-contain"
+                />
+              ) : [AssetType.VIDEO, AssetType.CAMPAIGN_VIDEO].includes(previewAsset.asset_type) ? (
+                <video 
+                  src={previewAsset.storage_path.startsWith('http') || previewAsset.storage_path.startsWith('data:') ? previewAsset.storage_path : AssetService.getPublicUrl(previewAsset.storage_path)} 
+                  controls 
+                  autoPlay
+                  className="max-w-full max-h-[70vh] rounded-xl shadow-2xl"
+                />
+              ) : (
+                <div className="p-20 flex flex-col items-center gap-4">
+                  {(typeIcons[previewAsset.asset_type] || FileText) && (
+                    <div className="p-8 rounded-full bg-white/5 border border-white/10 mb-4">
+                      {(() => {
+                        const Icon = typeIcons[previewAsset.asset_type];
+                        return <Icon className="w-16 h-16 text-white/40" />;
+                      })()}
+                    </div>
+                  )}
+                  <p className="text-white font-bold">{previewAsset.file_name}</p>
+                </div>
+              )}
+            </div>
+            
+            <div className="glass p-6 rounded-3xl border border-white/10 w-full max-w-2xl flex items-center justify-between">
+              <div>
+                <h4 className="text-xl font-bold text-white">{previewAsset.file_name}</h4>
+                <p className="text-white/40 text-xs font-bold uppercase tracking-widest mt-1">
+                  {previewAsset.asset_type.replace('_', ' ')} • Created {new Date(previewAsset.created_at).toLocaleDateString()}
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => handleDownload(previewAsset)}
+                  className="px-6 py-3 rounded-xl bg-white text-black font-black uppercase tracking-widest text-[10px] flex items-center gap-2 hover:bg-zinc-200 transition-all"
+                >
+                  <Download className="w-4 h-4" /> Download
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

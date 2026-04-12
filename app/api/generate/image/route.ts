@@ -17,6 +17,7 @@ export async function POST(req: Request) {
     }
 
     const apiKey = process.env.GOOGLE_AI_API_KEY;
+    console.log('DEBUG: apiKey detected:', !!apiKey);
 
     if (apiKey) {
       // ═══════════════════════════════════════════
@@ -29,11 +30,11 @@ export async function POST(req: Request) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              instances: [{ prompt }],
+              instances: [{ prompt: `${prompt}. High resolution, 4k, cinematic lighting, masterpiece, detailed textures, professional photography.` }],
               parameters: {
                 sampleCount: 1,
                 aspectRatio,
-                negativePrompt: negativePrompt || '',
+                negativePrompt: negativePrompt || 'low quality, blurry, text, watermark, deformed, messy, amateur',
                 personGeneration: 'ALLOW_ADULT',
               },
             }),
