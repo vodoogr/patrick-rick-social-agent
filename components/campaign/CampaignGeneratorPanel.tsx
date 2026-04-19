@@ -22,6 +22,7 @@ import {
   Sparkles, CheckCircle2, AlertCircle
 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { CampaignActionButtons } from "./CampaignActionButtons";
 import { GeneratedAssetPreview } from "./GeneratedAssetPreview";
 import { VideoGenerationModal } from "./VideoGenerationModal";
@@ -585,17 +586,28 @@ export function CampaignGeneratorPanel({ initialSongId }: { initialSongId?: stri
                   )}
                 </div>
 
-                {/* Save Campaign Button */}
-                <div className="pt-4 border-t border-white/10">
+                {/* Save & Launch Buttons */}
+                <div className="pt-4 border-t border-white/10 flex flex-col sm:flex-row gap-3">
                   <button 
                     onClick={handleSave}
                     disabled={saving}
-                    className="w-full h-12 bg-blue-600 text-white font-black tracking-widest uppercase text-xs rounded-xl shadow-lg hover:bg-blue-500 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                    className="flex-1 h-12 bg-blue-600 text-white font-black tracking-widest uppercase text-xs rounded-xl shadow-lg hover:bg-blue-500 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                   >
                     {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                    {saving ? "Saving Data & Assets..." : "Save Campaign"}
+                    {saving ? "Saving Data..." : "Save Campaign"}
                   </button>
+
+                  {(lastSavedId || activeCampaign) && (
+                    <Link 
+                      href="/"
+                      className="flex-1 h-12 bg-white text-black font-black tracking-widest uppercase text-xs rounded-xl shadow-lg hover:bg-zinc-200 transition-all flex items-center justify-center gap-2"
+                    >
+                      <Sparkles className="w-4 h-4" />
+                      Launch Pulse
+                    </Link>
+                  )}
                 </div>
+
               </div>
             )}
           </div>

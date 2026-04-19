@@ -8,6 +8,7 @@ import { ProfileService } from "@/services/profile-service";
 import { AssetService } from "@/services/asset-service";
 import { Album, SongEra } from "@/types";
 import { LoadingState } from "@/components/ui/LoadingState";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import Link from "next/link";
 
 const eraColors: Record<SongEra, string> = {
@@ -30,6 +31,7 @@ export default function AlbumsPage() {
   const [loading, setLoading] = useState(true);
   const [eraFilter, setEraFilter] = useState<SongEra | null>(null);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{id: string; title: string} | null>(null);
 
   useEffect(() => {
     async function fetchAlbums() {
@@ -48,16 +50,20 @@ export default function AlbumsPage() {
     fetchAlbums();
   }, [eraFilter]);
 
-  const handleDelete = async (e: React.MouseEvent, id: string, title: string) => {
+  const handleDeleteRequest = (e: React.MouseEvent, id: string, title: string) => {
     e.preventDefault();
-    if (!confirm(`Are you sure you want to delete the album "${title}"?`)) return;
-    
+    setDeleteTarget({ id, title });
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
     try {
-      await AlbumService.delete(id);
-      setAlbums(prev => prev.filter(a => a.id !== id));
+      await AlbumService.delete(deleteTarget.id);
+      setAlbums(prev => prev.filter(a => a.id !== deleteTarget.id));
     } catch (err) {
       console.error("Error deleting album:", err);
-      alert("Failed to delete album.");
+    } finally {
+      setDeleteTarget(null);
     }
   };
 
@@ -106,6 +112,7 @@ export default function AlbumsPage() {
   if (loading) return <LoadingState />;
 
   return (
+    <>
     <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in duration-700">
       <div className="flex items-center justify-between">
         <div>
@@ -168,7 +175,7 @@ export default function AlbumsPage() {
                     </span>
                   </div>
                   <button
-                    onClick={(e) => handleDelete(e, album.id, album.title)}
+                    onClick={(e) => handleDeleteRequest(e, album.id, album.title)}
                     className="absolute top-4 right-4 p-2 rounded-full bg-black/40 backdrop-blur-sm border border-white/10 text-white/50 hover:text-red-500 hover:bg-red-500/20 transition-all opacity-0 group-hover:opacity-100 z-10"
                     title="Delete Album"
                   >
@@ -203,5 +210,18 @@ export default function AlbumsPage() {
         </div>
       )}
     </div>
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmModal
+        isOpen={!!deleteTarget}
+        title="Eliminar Álbum"
+        message={`¿Estás seguro de que deseas eliminar "${deleteTarget?.title}"?\n\nSe eliminarán también todas las canciones vinculadas a este álbum. Esta acción no se puede deshacer.`}
+        confirmLabel="Eliminar"
+        cancelLabel="Cancelar"
+        variant="danger"
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => setDeleteTarget(null)}
+      />
+    </>
   );
 }

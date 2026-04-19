@@ -24,7 +24,23 @@ export function GeneratedAssetPreview({
 }: GeneratedAssetPreviewProps) {
   const [expanded, setExpanded] = useState(false);
 
-  if (!url) return null;
+  if (!url) {
+    if (model?.includes('veo') && !url) {
+       // Show processing state for video
+       return (
+         <div className="mt-3 space-y-2 animate-in fade-in duration-500">
+           <div className="relative rounded-2xl overflow-hidden border border-white/10 bg-white/5 p-8 flex flex-col items-center justify-center gap-4 min-h-[200px]">
+             <div className="w-12 h-12 rounded-full border-2 border-t-blue-500 border-white/5 animate-spin" />
+             <div className="text-center">
+               <p className="text-xs font-bold text-white/70">Veo 3.1 is crafting your video...</p>
+               <p className="text-[10px] text-white/30 uppercase tracking-widest mt-1">Status: Processing Operation</p>
+             </div>
+           </div>
+         </div>
+       );
+    }
+    return null;
+  }
 
   return (
     <div className="mt-3 space-y-2 animate-in fade-in duration-500">

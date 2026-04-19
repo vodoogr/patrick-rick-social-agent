@@ -43,10 +43,31 @@ export const ImportService = {
       }
     }
 
+    /**
+     * Extracts the pure "essence" of a name for matching purposes.
+     * Strips: extension, track numbers, parenthetical tags like (Remastered),
+     * suffixes like _cover, and normalizes to lowercase alphanumeric only.
+     */
+    const extractEssence = (filename: string, stripCoverSuffix: boolean = false): string => {
+      let name = filename;
+      // 1. Remove file extension
+      name = name.replace(/\.[^/.]+$/, '');
+      // 2. Remove leading track numbers like "5.", "01-", "12 - ", etc.
+      name = name.replace(/^\d+[\s.\-_]+/, '');
+      // 3. Remove parenthetical/bracketed tags: (Remastered), [Bonus Track], etc.
+      name = name.replace(/\s*[\(\[][^\)\]]*[\)\]]\s*/g, '');
+      // 4. If requested, remove cover/caratula suffix (for image files)
+      if (stripCoverSuffix) {
+        name = name.replace(/[\s_\-]*(cover|caratula)\s*$/i, '');
+      }
+      // 5. Normalize to lowercase, only keep letters and numbers
+      return name.toLowerCase().replace(/[^a-z0-9]/g, '');
+    };
+
     // Determine Tracks
     const trackCandidates: TrackCandidate[] = audioFiles.map(file => {
       let trackNum: number | null = null;
-      let title = file.name.replace(/\.(mp3|wav|flac|m4a)$/i, '');
+      let title = file.name.replace(/\.(mp3|wav|flac|m4a|aac|ogg)$/i, '');
 
       // Try to extract initial numbers
       const match = title.match(/(?:.*-\s*)?0*(\d+)[\s-_\.]+(.*)$/);
@@ -57,24 +78,27 @@ export const ImportService = {
       
       const isSpecial = file.name.toLowerCase().match(/(bonus|special|extra)/);
       if (isSpecial) {
-         if (trackNum !== null) trackNum += 100; // force to end
+         if (trackNum !== null) trackNum += 100;
          else trackNum = 999;
       }
 
-      // Check for track specific cover
-      const cleanTitle = title.toLowerCase().trim().replace(/\s+/g, ' ');
-      const rawAudioName = file.name.replace(/\.(mp3|wav|flac|m4a)$/i, '').toLowerCase().trim().replace(/\s+/g, ' ');
-      
-      const trackCover = imageFiles.find(i => {
-         const n = i.name.toLowerCase().replace(/\.[^/.]+$/, "").trim().replace(/\s+/g, ' ');
-         
-         const escapedTitle = cleanTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-         const coverRegex = new RegExp(`(?:^|\\d+[\\s-_.]+)?${escapedTitle}\\s*[_-]?\\s*cover$`);
-         
-         const escapedRaw = rawAudioName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-         const rawCoverRegex = new RegExp(`^${escapedRaw}\\s*[_-]?\\s*cover$`);
-         
-         return coverRegex.test(n) || rawCoverRegex.test(n) || n === `${cleanTitle} caratula`;
+      // Extract the pure essence of the song name
+      const songEssence = extractEssence(file.name);
+
+      // Find matching cover image
+      const trackCover = imageFiles.find(img => {
+        // Skip the album cover
+        if (coverCandidate && img.id === coverCandidate.driveFile.id) return false;
+        
+        const imgEssence = extractEssence(img.name, true); // strip _cover suffix
+        
+        // Direct essence match (most reliable)
+        if (songEssence === imgEssence) return true;
+        
+        // One contains the other (handles minor differences)
+        if (songEssence.includes(imgEssence) || imgEssence.includes(songEssence)) return true;
+        
+        return false;
       });
 
       return {
@@ -84,7 +108,10 @@ export const ImportService = {
         status: 'new',
         coverCandidate: trackCover ? { driveFile: trackCover, isConfirmed: true } : null
       };
+
     });
+
+
 
     // Populate otherFiles
     imageFiles.forEach(img => {

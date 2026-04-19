@@ -25,7 +25,7 @@ export async function POST(req: Request) {
       // ═══════════════════════════════════════════
       try {
         const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/imagen-4-ultra:predict?key=${apiKey}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${apiKey}`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -62,7 +62,7 @@ export async function POST(req: Request) {
           mimeType,
           prompt,
           provider: 'google',
-          model: 'imagen-4-ultra',
+          model: 'imagen-4.0-generate-001',
           generatedAt: new Date().toISOString(),
         });
       } catch (apiErr: any) {

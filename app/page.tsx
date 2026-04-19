@@ -10,7 +10,8 @@ import {
   Instagram,
   Youtube,
   Music2,
-  Plus
+  Plus,
+  Sparkles
 } from "lucide-react";
 import { CampaignService } from "@/services/campaign-service";
 import { PostService } from "@/services/post-service";
@@ -63,6 +64,38 @@ export default function Dashboard() {
 
   return (
     <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in duration-700">
+      
+      {/* Quick Start Guide */}
+      <section className="glass rounded-[2.5rem] border border-white/5 p-8 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-96 h-96 bg-blue-600/10 blur-[120px] rounded-full -mr-48 -mt-48" />
+        <div className="relative z-10">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-2 bg-white/5 rounded-xl border border-white/10">
+              <Sparkles className="w-5 h-5 text-blue-400" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold tracking-tight">System Quick Start</h2>
+              <p className="text-xs text-white/40 font-bold uppercase tracking-widest">Mastering the Patrick Rick Engine</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            {[
+              { step: '01', title: 'Import Album', desc: 'Sync your music from Google Drive in the Albums section.', icon: Plus },
+              { step: '02', title: 'Extract DNA', desc: 'Generate unique Creative DNA for each song to guide the AI.', icon: Music2 },
+              { step: '03', title: 'Batch Pulse', desc: 'Run the Campaign Pulse to generate hooks and visuals.', icon: TrendingUp },
+              { step: '04', title: 'Deploy Media', desc: 'Trigger Veo 3.1 and Imagen 4 to create final assets.', icon: Youtube },
+            ].map((s, i) => (
+              <div key={i} className="space-y-3 p-4 rounded-2xl bg-white/5 border border-white/5 hover:border-white/10 transition-colors">
+                <span className="text-[10px] font-black text-blue-500/50 tracking-tighter">{s.step}</span>
+                <h4 className="text-sm font-bold">{s.title}</h4>
+                <p className="text-[11px] text-white/40 leading-relaxed">{s.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* Hero Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="card-gradient glass rounded-3xl p-8 border border-white/5 relative overflow-hidden group">

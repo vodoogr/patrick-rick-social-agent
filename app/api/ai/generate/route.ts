@@ -12,11 +12,12 @@ export async function POST(req: Request) {
     const apiKey = process.env.GOOGLE_AI_API_KEY;
 
     if (!apiKey) {
+      console.error('GOOGLE_AI_API_KEY is missing from environment variables');
       return NextResponse.json({ error: 'GOOGLE_AI_API_KEY not configured' }, { status: 500 });
     }
 
-    // Model choice: Gemini 3 Flash has much higher RPM limits than Pro
-    const model = 'gemini-3-flash';
+    // Model choice: Optimized Lite version for low-cost high-volume content
+    const model = 'gemini-3.1-flash-lite-preview';
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
     let lastError = null;
@@ -37,29 +38,36 @@ export async function POST(req: Request) {
               topP: 0.95,
               topK: 40,
               maxOutputTokens: 2048,
+              responseMimeType: 'application/json'
             }
           }),
         });
 
         if (response.status === 429) {
-          // Wait and retry
           const waitTime = Math.pow(2, attempt) * 1000;
-          console.warn(`Gemini 429. Retrying in ${waitTime}ms...`);
+          console.warn(`Gemini 429 Rate Limit. Attempt ${attempt + 1}. Retrying in ${waitTime}ms...`);
           await new Promise(r => setTimeout(r, waitTime));
           continue;
         }
 
         if (!response.ok) {
           const errText = await response.text();
-          console.error('Gemini API error:', errText);
-          throw new Error(`Gemini API error: ${response.status}`);
+          console.error(`Gemini API error (Status ${response.status}):`, errText);
+          throw new Error(`Gemini API error: ${response.status} - ${errText.substring(0, 100)}`);
         }
 
         const data = await response.json();
+        
+        if (!data.candidates || data.candidates.length === 0) {
+          console.error('Gemini returned no candidates:', JSON.stringify(data));
+          throw new Error('Gemini returned no content. Check for safety filters.');
+        }
+
         const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
         return NextResponse.json({ text });
 
       } catch (err: any) {
+        console.error(`Attempt ${attempt + 1} failed:`, err.message);
         lastError = err;
         if (attempt === 2) throw err;
         await new Promise(r => setTimeout(r, 1000));

@@ -65,9 +65,16 @@ Themes: ${song.creative_dna?.themes?.join(', ') || 'N/A'}`;
   const rawResult = await callGemini(systemPrompt, userPrompt);
   
   try {
-    // Attempt to extract JSON if Gemini wrapped it in markdown blocks
+    // Robust extraction: find the first { and the last }
     const jsonMatch = rawResult.match(/\{[\s\S]*\}/);
     const jsonStr = jsonMatch ? jsonMatch[0] : rawResult;
+    
+    // Safety check for empty or nonsense responses
+    if (!jsonStr || jsonStr.length < 10) {
+      console.error("Gemini returned empty or too short response:", rawResult);
+      throw new Error("Gemini response is too empty.");
+    }
+
     const data = JSON.parse(jsonStr);
     
     return {
@@ -80,10 +87,12 @@ Themes: ${song.creative_dna?.themes?.join(', ') || 'N/A'}`;
       reel_visual_prompt: data.reel_visual_prompt || ""
     };
   } catch (e) {
-    console.error("Failed to parse Gemini JSON:", rawResult);
+    console.error("Failed to parse Gemini JSON. Raw response was:", rawResult);
     throw new Error("Gemini returned invalid campaign data format.");
   }
 }
+
+
 
 // Keep individual functions for specialized regeneration, but wrapped in single calls
 export async function generateCampaignHook(params: CampaignGeneratorParams): Promise<string> {

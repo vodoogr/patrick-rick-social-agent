@@ -24,24 +24,26 @@ export async function POST(req: Request) {
       // ═══════════════════════════════════════════
       try {
         const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/veo-3.1:predict?key=${apiKey}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/veo-3.1-lite-generate-preview:generateVideo?key=${apiKey}`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              instances: [{ prompt }],
-              parameters: {
-                aspectRatio,
+              videoConfig: {
+                aspectRatio: aspectRatio.replace(':', '_'), // API often expects 9_16 or JUST 9:16
                 durationSeconds,
-                personGeneration: 'ALLOW_ADULT',
-                // Include reference image for Image-To-Video if provided
-                ...(imageReference && { 
-                  referenceImage: { 
-                    image: imageReference, 
-                    role: 'FIRST_FRAME' 
-                  } 
-                }),
+                fps: 24,
               },
+              prompt,
+              // For Image-To-Video in AI Studio
+              ...(imageReference && {
+                originImage: {
+                  inlineData: {
+                    mimeType: 'image/png',
+                    data: imageReference.split(',')[1] // Assuming data URL
+                  }
+                }
+              })
             }),
           }
         );
@@ -49,43 +51,46 @@ export async function POST(req: Request) {
         if (!response.ok) {
           const errText = await response.text();
           console.error('Google Veo 3.1 API error:', errText);
-          throw new Error(`Veo 3.1 API error: ${response.status}`);
+          throw new Error(`Veo 3.1 API error: ${response.status} - ${errText}`);
         }
 
         const data = await response.json();
-        const prediction = data.predictions?.[0];
 
-        if (!prediction?.bytesBase64Encoded) {
-          // Veo may return an operation ID for async generation
-          if (data.name) {
-            return NextResponse.json({
-              videoUrl: '',
-              mimeType: 'video/mp4',
-              prompt,
-              provider: 'google',
-              model: 'veo-3.1',
-              durationSeconds,
-              generatedAt: new Date().toISOString(),
-              status: 'processing',
-              operationId: data.name,
-            });
-          }
-          throw new Error('No video data in Veo 3.1 response');
+        // Veo 3.1 always returns an operation for async generation in 2026
+        if (data.name) {
+          return NextResponse.json({
+            videoUrl: '',
+            mimeType: 'video/mp4',
+            prompt,
+            provider: 'google',
+            model: 'veo-3.1-lite-generate-preview',
+            durationSeconds,
+            generatedAt: new Date().toISOString(),
+            status: 'processing',
+            operationId: data.name,
+          });
         }
 
-        const mimeType = prediction.mimeType || 'video/mp4';
-        const videoUrl = `data:${mimeType};base64,${prediction.bytesBase64Encoded}`;
+        // If it somehow returned immediate data
+        const prediction = data.predictions?.[0];
+        if (prediction?.bytesBase64Encoded) {
+          const mimeType = prediction.mimeType || 'video/mp4';
+          const videoUrl = `data:${mimeType};base64,${prediction.bytesBase64Encoded}`;
 
-        return NextResponse.json({
-          videoUrl,
-          mimeType,
-          prompt,
-          provider: 'google',
-          model: 'veo-3.1',
-          durationSeconds,
-          generatedAt: new Date().toISOString(),
-          status: 'completed',
-        });
+          return NextResponse.json({
+            videoUrl,
+            mimeType,
+            prompt,
+            provider: 'google',
+            model: 'veo-3.1-lite-generate-preview',
+            durationSeconds,
+            generatedAt: new Date().toISOString(),
+            status: 'completed',
+          });
+        }
+
+        throw new Error('No video data or operation ID in Veo 3.1 response');
+
       } catch (apiErr: any) {
         console.error('Veo API call failed, falling back to placeholder:', apiErr.message);
         // Fall through to placeholder

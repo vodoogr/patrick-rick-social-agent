@@ -21,6 +21,7 @@ import { SongService } from "@/services/song-service";
 import { AssetService } from "@/services/asset-service";
 import { ProfileService } from "@/services/profile-service";
 import { SongEra, ReleaseStatus, AssetType } from "@/types/enums";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 
 export default function ImportPage() {
   const router = useRouter();
@@ -28,7 +29,32 @@ export default function ImportPage() {
   const [scanning, setScanning] = useState(false);
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [preview, setPreview] = useState<AlbumImportPreview | null>(null);
+
+  // Confirmation modal state
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmConfig, setConfirmConfig] = useState<{
+    title: string;
+    message: string;
+    confirmLabel: string;
+    cancelLabel: string;
+    variant: 'danger' | 'info';
+    onConfirm: () => void;
+    onCancel: () => void;
+  } | null>(null);
+
+  const showConfirm = (config: Omit<typeof confirmConfig, 'onConfirm' | 'onCancel'> & { onConfirm: () => void; onCancel?: () => void }): void => {
+    setConfirmConfig({
+      ...config,
+      onCancel: config.onCancel || (() => setConfirmOpen(false)),
+      onConfirm: () => {
+        setConfirmOpen(false);
+        config.onConfirm();
+      },
+    } as any);
+    setConfirmOpen(true);
+  };
 
   const updateTrack = (index: number, field: keyof TrackCandidate, value: any) => {
     if (!preview) return;
@@ -61,8 +87,53 @@ export default function ImportPage() {
     try {
       setScanning(true);
       setError(null);
+      setInfoMessage(null);
       setPreview(null);
       const data = await generateImportPreview(extractedId);
+      
+      // Proactive duplicate check
+      const allExistingAlbums = await AlbumService.getAll();
+      const duplicate = allExistingAlbums.find(a => 
+        a.title.toLowerCase().trim() === data.inferredAlbumTitle.toLowerCase().trim()
+      );
+      
+      if (duplicate) {
+        // Show custom modal and wait for user decision via promise
+        setScanning(false);
+        
+        showConfirm({
+          title: "Álbum duplicado detectado",
+          message: `El álbum "${duplicate.title}" ya existe en tu catálogo.\n\nSi continúas con la importación limpia, se eliminará el álbum anterior junto con todas sus canciones y se recreará desde cero.\n\nEsto es lo recomendado para evitar duplicados.`,
+          confirmLabel: "Borrar y Reimportar",
+          cancelLabel: "No importar",
+          variant: 'danger',
+          onConfirm: async () => {
+            setImporting(true);
+            try {
+              await AlbumService.delete(duplicate.id);
+              // Reset all tracks to 'new' since album was wiped
+              data.status = 'new';
+              data.existingAlbumId = undefined;
+              data.trackCandidates.forEach(tc => {
+                tc.status = 'new';
+                tc.existingSongId = undefined;
+              });
+              setInfoMessage("Álbum anterior eliminado correctamente. Revisa la vista previa y pulsa 'Import to Catalog' para completar.");
+              setPreview(data);
+            } catch (err: any) {
+              setError("Error eliminando álbum anterior: " + err.message);
+            } finally {
+              setImporting(false);
+            }
+          },
+          onCancel: () => {
+            setConfirmOpen(false);
+            setInfoMessage("Importación cancelada. No se ha realizado ningún cambio.");
+          },
+        });
+        return; // Don't set preview yet — wait for modal decision
+      }
+
       setPreview(data);
     } catch (err: any) {
       setError(err.message || "An unexpected error occurred scanning the folder.");
@@ -81,42 +152,28 @@ export default function ImportPage() {
       if (!profile) throw new Error("Could not find active profile to assign ownership.");
 
       let albumId = preview.existingAlbumId;
-      const allExistingAlbums = await AlbumService.getAll();
-      const duplicateByTitle = allExistingAlbums.find(a => a.title.toLowerCase() === preview.inferredAlbumTitle.trim().toLowerCase());
 
-      if (duplicateByTitle) {
-        if (!window.confirm(`El álbum "${preview.inferredAlbumTitle}" ya existe en la base de datos. Para no generar duplicados, se actualizará el álbum existente. ¿Estás seguro de que deseas continuar?`)) {
-          setImporting(false);
-          return;
-        }
-        // Force the use of the duplicate album ID, override "new" status
-        albumId = duplicateByTitle.id;
-        await AlbumService.update(albumId, {
-          drive_folder_id: preview.folderId
+      // The scan phase already handled duplicate detection and deletion.
+      // Here we simply create a new album if status is 'new', or update if 'update'.
+      if (preview.status === 'new' || !albumId) {
+        const newAlbum = await AlbumService.create({
+          owner_id: profile.id,
+          title: preview.inferredAlbumTitle.trim(),
+          slug: preview.inferredAlbumTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now(),
+          era: SongEra.PRESENT,
+          drive_folder_id: preview.folderId,
         });
+        albumId = newAlbum.id;
       } else {
-        // 1. Create Album if it truly does not exist
-        if (preview.status === 'new' || !albumId) {
-          const newAlbum = await AlbumService.create({
-            owner_id: profile.id,
-            title: preview.inferredAlbumTitle.trim(),
-            slug: preview.inferredAlbumTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now(),
-            era: SongEra.PRESENT,
-            drive_folder_id: preview.folderId,
-          });
-          albumId = newAlbum.id;
-        } else {
-          // It's an update but title was changed completely? (very edge case)
-          await AlbumService.update(albumId, {
-            drive_folder_id: preview.folderId,
-            title: preview.inferredAlbumTitle.trim()
-          });
-        }
+        await AlbumService.update(albumId, {
+          drive_folder_id: preview.folderId,
+          title: preview.inferredAlbumTitle.trim()
+        });
       }
 
       if (!albumId) throw new Error("Failed to resolve Album ID.");
 
-      // 2. Handle Cover Asset
+      // Handle Cover Asset
       if (preview.coverCandidate) {
         const coverUrl = `https://drive.google.com/thumbnail?id=${preview.coverCandidate.driveFile.id}&sz=w1000`;
         if (coverUrl) {
@@ -140,7 +197,7 @@ export default function ImportPage() {
           finalEra = fetchedAlbum.era;
        }
 
-      // 3. Create or Update Songs
+      // Create or Update Songs
       for (const track of preview.trackCandidates) {
         if (track.status === 'skip') continue;
 
@@ -217,8 +274,14 @@ export default function ImportPage() {
           </div>
           {error && (
             <div className="flex items-center gap-2 text-red-400 bg-red-500/10 border border-red-500/20 p-4 rounded-xl text-sm">
-              <AlertCircle className="w-4 h-4" />
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
               <p>{error}</p>
+            </div>
+          )}
+          {infoMessage && (
+            <div className="flex items-center gap-2 text-green-400 bg-green-500/10 border border-green-500/20 p-4 rounded-xl text-sm">
+              <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+              <p>{infoMessage}</p>
             </div>
           )}
         </form>
@@ -297,7 +360,12 @@ export default function ImportPage() {
                           disabled={track.status === 'skip'}
                           className="w-full bg-transparent text-sm font-bold truncate focus:outline-none border-b border-transparent focus:border-white/30 transition-colors"
                         />
-                        <p className="text-[10px] text-white/30 truncate">{track.driveFile.name}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <p className="text-[10px] text-white/30 truncate">{track.driveFile.name}</p>
+                          {track.coverCandidate && (
+                            <span className="text-[9px] bg-green-500/10 text-green-400 border border-green-500/20 px-1.5 py-0.5 rounded font-bold">COVER ✓</span>
+                          )}
+                        </div>
                       </div>
                       <div className="flex items-center gap-2">
                           <span className={`hidden sm:flex px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest rounded border ${
@@ -371,6 +439,23 @@ export default function ImportPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Custom Confirmation Modal */}
+      {confirmConfig && (
+        <ConfirmModal
+          isOpen={confirmOpen}
+          title={confirmConfig.title}
+          message={confirmConfig.message}
+          confirmLabel={confirmConfig.confirmLabel}
+          cancelLabel={confirmConfig.cancelLabel}
+          variant={confirmConfig.variant}
+          onConfirm={confirmConfig.onConfirm}
+          onCancel={() => {
+            setConfirmOpen(false);
+            confirmConfig.onCancel();
+          }}
+        />
       )}
     </div>
   );
