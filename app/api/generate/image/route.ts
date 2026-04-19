@@ -21,20 +21,19 @@ export async function POST(req: Request) {
 
     if (apiKey) {
       // ═══════════════════════════════════════════
-      // PRODUCTION: Call Google Imagen 3 API
+      // PRODUCTION: Call Google Imagen 4 API
       // ═══════════════════════════════════════════
       try {
         const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${apiKey}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/imagen-4-ultra:predict?key=${apiKey}`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              instances: [{ prompt: `${prompt}. High resolution, 4k, cinematic lighting, masterpiece, detailed textures, professional photography.` }],
+              instances: [{ prompt: `${prompt}. Ultra-high resolution, 8k, cinematic lighting, hyper-realistic, professional photography, artistic masterpiece.` }],
               parameters: {
                 sampleCount: 1,
                 aspectRatio,
-                negativePrompt: negativePrompt || 'low quality, blurry, text, watermark, deformed, messy, amateur',
                 personGeneration: 'ALLOW_ADULT',
               },
             }),
@@ -43,15 +42,15 @@ export async function POST(req: Request) {
 
         if (!response.ok) {
           const errText = await response.text();
-          console.error('Google Imagen API error:', errText);
-          throw new Error(`Imagen API error: ${response.status}`);
+          console.error('Google Imagen 4 API error:', errText);
+          throw new Error(`Imagen 4 API error: ${response.status}`);
         }
 
         const data = await response.json();
         const prediction = data.predictions?.[0];
         
         if (!prediction?.bytesBase64Encoded) {
-          throw new Error('No image data in Imagen response');
+          throw new Error('No image data in Imagen 4 response');
         }
 
         // Convert base64 to data URL for preview
@@ -63,12 +62,12 @@ export async function POST(req: Request) {
           mimeType,
           prompt,
           provider: 'google',
-          model: 'imagen-3.0-generate-002',
+          model: 'imagen-4-ultra',
           generatedAt: new Date().toISOString(),
         });
       } catch (apiErr: any) {
-        console.error('Imagen API call failed, falling back to placeholder:', apiErr.message);
-        // Fall through to placeholder
+        console.error('Imagen API call failed:', apiErr.message);
+        return NextResponse.json({ error: `Imagen API error: ${apiErr.message}` }, { status: 500 });
       }
     }
 

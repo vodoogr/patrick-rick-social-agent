@@ -5,26 +5,44 @@ export interface VideoPromptParams {
   song: Song;
 }
 
+async function callGemini(systemPrompt: string, userPrompt: string): Promise<string> {
+  const response = await fetch('/api/ai/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ systemPrompt, userPrompt }),
+  });
+
+  if (!response.ok) {
+    const err = await response.json();
+    throw new Error(err.error || 'Failed to generate visual prompt');
+  }
+
+  const data = await response.json();
+  return data.text.trim();
+}
+
 export async function generateVideoPrompt(params: VideoPromptParams): Promise<string> {
   const { album, song } = params;
 
-  const themes = song.creative_dna?.themes?.join(', ') ?? 'emotional restraint';
-  const mood = song.creative_dna?.emotional_summary ?? 'elegant composition';
-
-  // AI Mock sleep
-  await new Promise(r => setTimeout(r, 1200));
-
-  return `Cinematic night scene with a solitary man walking through a dark corridor toward warm golden sunrise light, reflective modern architecture, slow camera push, ${themes}, ${mood}.`;
+  return callGemini(
+    "You are a specialized AI prompt engineer for Google Veo 3.1. Create a highly detailed, cinematic video prompt (50-100 words). Describe camera movement, lighting, and specific actions. Output ONLY the prompt string.",
+    `Song: ${song.title}
+Album: ${album.title} (${album.era} Era)
+Emotional Core: ${song.creative_dna?.emotional_summary || 'N/A'}
+Visual Identity: ${song.creative_dna?.visual_identity || 'N/A'}
+Themes: ${song.creative_dna?.themes?.join(', ') || 'N/A'}`
+  );
 }
 
 export async function generateReelThumbnailVisual(params: VideoPromptParams): Promise<string> {
-  const { song } = params;
+  const { song, album } = params;
   
-  const visualIdentity = song.creative_dna?.visual_identity ?? 'cinematic close-up portrait';
-  const campaignTone = song.creative_dna?.campaign_tone ?? 'emotional';
-
-  // AI Mock sleep
-  await new Promise(r => setTimeout(r, 1000));
-
-  return `Vertical aspect ratio composition. 9:16. ${visualIdentity}, visually striking, ${campaignTone} framing, elegant typography placeholder, modern sophisticated style.`;
+  return callGemini(
+    "You are a specialized AI prompt engineer for Imagen 4. Create a prompt for a high-impact REEL thumbnail visual in 9:16 aspect ratio. Focus on vertical composition and stopping power. Output ONLY the prompt string.",
+    `Song: ${song.title}
+Era: ${album.era}
+Campaign Tone: ${song.creative_dna?.campaign_tone || 'N/A'}
+Visual ID: ${song.creative_dna?.visual_identity || 'N/A'}`
+  );
 }
+

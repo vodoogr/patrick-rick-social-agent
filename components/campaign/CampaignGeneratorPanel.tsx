@@ -130,26 +130,22 @@ export function CampaignGeneratorPanel({ initialSongId }: { initialSongId?: stri
     setGenerating(true);
     try {
       const params = { song, album, existingCampaigns: [] };
-      const [campaignInfo, cover, video, reel] = await Promise.all([
-        generateFullCampaign(params),
-        generateSongCoverConcept(params),
-        generateVideoPrompt(params),
-        generateReelThumbnailVisual(params)
-      ]);
+      const fullCampaign = await generateFullCampaign(params);
 
-      setHook(campaignInfo.campaign_hook);
-      setCaption(campaignInfo.caption);
-      setHashtags(campaignInfo.hashtags);
-      setCampaignConcept(campaignInfo.campaign_concept);
-      setSongCoverPrompt(cover);
-      setVideoPrompt(video);
-      setReelVisualPrompt(reel);
+      setHook(fullCampaign.campaign_hook);
+      setCaption(fullCampaign.caption);
+      setHashtags(fullCampaign.hashtags);
+      setCampaignConcept(fullCampaign.campaign_concept);
+      setSongCoverPrompt(fullCampaign.song_cover_prompt);
+      setVideoPrompt(fullCampaign.video_prompt);
+      setReelVisualPrompt(fullCampaign.reel_visual_prompt);
     } catch (e: any) {
       alert("Error generating campaign: " + e.message);
     } finally {
       setGenerating(false);
     }
   };
+
 
   const handleRegenerateHook = async () => {
     if (!song || !album) return;

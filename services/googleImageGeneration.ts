@@ -54,7 +54,6 @@ export const GoogleImageGeneration = {
       prompt,
       aspectRatio: '1:1',
       style: 'cinematic',
-      negativePrompt: 'text, watermark, logo, blurry, low quality, amateur',
     });
   },
 
@@ -66,7 +65,6 @@ export const GoogleImageGeneration = {
       prompt,
       aspectRatio: '9:16',
       style: 'cinematic',
-      negativePrompt: 'text, watermark, logo, blurry, low quality, amateurish',
     });
   },
 };

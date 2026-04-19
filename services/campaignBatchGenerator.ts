@@ -54,21 +54,21 @@ export const CampaignBatchGenerator = {
       try {
         const params = { song, album, existingCampaigns: [] };
         
-        const [campaign, coverPrompt, vidPrompt, reelPrompt] = await Promise.all([
-          generateFullCampaign(params),
-          generateSongCoverConcept(params),
-          generateVideoPrompt(params),
-          generateReelThumbnailVisual(params)
-        ]);
-
+        const fullCampaign = await generateFullCampaign(params);
+ 
         results.push({
           songId: song.id,
           songTitle: song.title,
           trackNumber: song.track_number,
-          campaign,
-          songCoverPrompt: coverPrompt,
-          reelVisualPrompt: reelPrompt,
-          videoPrompt: vidPrompt,
+          campaign: {
+            campaign_hook: fullCampaign.campaign_hook,
+            caption: fullCampaign.caption,
+            hashtags: fullCampaign.hashtags,
+            campaign_concept: fullCampaign.campaign_concept
+          },
+          songCoverPrompt: fullCampaign.song_cover_prompt,
+          reelVisualPrompt: fullCampaign.reel_visual_prompt,
+          videoPrompt: fullCampaign.video_prompt,
           status: 'completed',
           imageGenerated: false,
           videoGenerated: false,

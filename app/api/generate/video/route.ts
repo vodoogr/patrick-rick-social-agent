@@ -20,11 +20,11 @@ export async function POST(req: Request) {
 
     if (apiKey) {
       // ═══════════════════════════════════════════
-      // PRODUCTION: Call Google Veo 2 API
+      // PRODUCTION: Call Google Veo 3 API
       // ═══════════════════════════════════════════
       try {
         const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/veo-2.0-generate-001:predict?key=${apiKey}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/veo-3.1:predict?key=${apiKey}`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -48,8 +48,8 @@ export async function POST(req: Request) {
 
         if (!response.ok) {
           const errText = await response.text();
-          console.error('Google Veo API error:', errText);
-          throw new Error(`Veo API error: ${response.status}`);
+          console.error('Google Veo 3.1 API error:', errText);
+          throw new Error(`Veo 3.1 API error: ${response.status}`);
         }
 
         const data = await response.json();
@@ -63,14 +63,14 @@ export async function POST(req: Request) {
               mimeType: 'video/mp4',
               prompt,
               provider: 'google',
-              model: 'veo-2.0-generate-001',
+              model: 'veo-3.1',
               durationSeconds,
               generatedAt: new Date().toISOString(),
               status: 'processing',
               operationId: data.name,
             });
           }
-          throw new Error('No video data in Veo response');
+          throw new Error('No video data in Veo 3.1 response');
         }
 
         const mimeType = prediction.mimeType || 'video/mp4';
@@ -81,7 +81,7 @@ export async function POST(req: Request) {
           mimeType,
           prompt,
           provider: 'google',
-          model: 'veo-2.0-generate-001',
+          model: 'veo-3.1',
           durationSeconds,
           generatedAt: new Date().toISOString(),
           status: 'completed',
