@@ -66,8 +66,8 @@ export async function POST(req: Request) {
           generatedAt: new Date().toISOString(),
         });
       } catch (apiErr: any) {
-        console.error('Imagen API call failed:', apiErr.message);
-        return NextResponse.json({ error: `Imagen API error: ${apiErr.message}` }, { status: 500 });
+        console.error('Imagen API call failed, falling back to placeholder:', apiErr.message);
+        // Fall through to development placeholder below
       }
     }
 

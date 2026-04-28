@@ -27,18 +27,12 @@ export interface VideoGenerationResult {
 
 export const GoogleVideoGeneration = {
 
-  /**
-   * Generate a video using Google's Veo API.
-   * Calls the server-side API route to avoid exposing credentials client-side.
-   */
   async generate(request: VideoGenerationRequest): Promise<VideoGenerationResult> {
     const response = await fetch('/api/generate/video', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         ...request,
-        // Map imageReference to what the API expects if needed, 
-        // usually it goes inside parameters or similar depending on the exact Google Vertex AI spec
       }),
     });
 
@@ -47,7 +41,35 @@ export const GoogleVideoGeneration = {
       throw new Error(errData.error || `Video generation failed (${response.status})`);
     }
 
-    return await response.json();
+    let result = await response.json();
+
+    if (result.status === 'processing' && result.operationId) {
+      // Poll for completion
+      console.log('Video generation started. Polling operation:', result.operationId);
+      
+      while (result.status === 'processing') {
+        await new Promise(resolve => setTimeout(resolve, 5000)); // Poll every 5s
+        
+        const statusRes = await fetch(`/api/generate/video/status?operationId=${encodeURIComponent(result.operationId)}`);
+        if (!statusRes.ok) {
+           console.error('Failed to poll status');
+           break;
+        }
+        
+        const statusData = await statusRes.json();
+        if (statusData.status === 'completed') {
+           result.videoUrl = statusData.videoUrl;
+           result.mimeType = statusData.mimeType;
+           result.status = 'completed';
+        } else if (statusData.status === 'failed') {
+           throw new Error(`Video generation failed: ${statusData.error}`);
+        } else {
+           console.log(`Still processing... Progress: ${statusData.progress || 0}%`);
+        }
+      }
+    }
+
+    return result;
   },
 
   /**

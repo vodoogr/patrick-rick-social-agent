@@ -48,7 +48,7 @@ export function GeneratedAssetPreview({
       <div className="relative rounded-2xl overflow-hidden border border-white/10 group">
         {type === 'image' ? (
           <>
-            {isPlaceholder || url.startsWith('placeholder:') ? (
+            {(isPlaceholder && !url.startsWith('data:')) || url.startsWith('placeholder:') ? (
               <div
                 className="w-full aspect-square flex flex-col items-center justify-center gap-3"
                 style={{
@@ -70,7 +70,7 @@ export function GeneratedAssetPreview({
           </>
         ) : (
           <>
-            {isPlaceholder || url.startsWith('placeholder:') ? (
+            {(isPlaceholder && !url.startsWith('data:')) || url.startsWith('placeholder:') ? (
               <div
                 className="w-full aspect-[9/16] max-h-[300px] flex flex-col items-center justify-center gap-3"
                 style={{
@@ -108,7 +108,7 @@ export function GeneratedAssetPreview({
       </div>
 
       {/* Expanded view (fullscreen modal) */}
-      {expanded && url && !url.startsWith('placeholder:') && (
+      {expanded && url && (url.startsWith('data:') || url.startsWith('http')) && (
         <div
           className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center cursor-pointer"
           onClick={() => setExpanded(false)}

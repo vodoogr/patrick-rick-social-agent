@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Song, Album, Campaign } from "@/types";
 import { SongService } from "@/services/song-service";
 import { AlbumService } from "@/services/album-service";
@@ -19,7 +19,7 @@ import { GoogleImageGeneration, ImageGenerationResult } from "@/services/googleI
 import { GoogleVideoGeneration, VideoGenerationResult } from "@/services/googleVideoGeneration";
 import { 
   Loader2, RefreshCw, Save, Image as ImageIcon, Video, FileText, 
-  Sparkles, CheckCircle2, AlertCircle
+  Sparkles, CheckCircle2, AlertCircle, UploadCloud
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -62,6 +62,7 @@ export function CampaignGeneratorPanel({ initialSongId }: { initialSongId?: stri
   const [reelSaved, setReelSaved] = useState(false);
   const [videoSaved, setVideoSaved] = useState(false);
   const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [lastSavedId, setLastSavedId] = useState<string | null>(null);
 
@@ -288,6 +289,12 @@ export function CampaignGeneratorPanel({ initialSongId }: { initialSongId?: stri
   const handleSaveVideoAsset = async () => {
     if (!videoResult || !song) return;
     try {
+      // Don't re-upload if it's an external video we just uploaded
+      if (videoResult.model === 'flowtv-external') {
+        alert("El vídeo ya se guardó automáticamente al subirlo.");
+        return;
+      }
+      
       await AssetService.uploadFromDataUrl(
         videoResult.videoUrl,
         `${song.title}_video_ai.mp4`,
@@ -305,6 +312,37 @@ export function CampaignGeneratorPanel({ initialSongId }: { initialSongId?: stri
       setVideoSaved(true);
     } catch (e: any) {
       alert("Failed to save asset: " + e.message);
+    }
+  };
+
+  const handleUploadExternalVideo = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0 && song) {
+      const file = e.target.files[0];
+      setGeneratingVideo(true);
+      try {
+        const storagePath = `external_video/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+        const asset = await AssetService.upload(file, storagePath, AssetType.CAMPAIGN_VIDEO, song.id, {
+          source: 'external',
+          provider: 'flowtv',
+          prompt: videoPrompt
+        });
+        
+        setVideoResult({
+          videoUrl: AssetService.getPublicUrl(asset.storage_path),
+          mimeType: file.type,
+          prompt: videoPrompt,
+          provider: 'google', // mocked for UI
+          model: 'flowtv-external',
+          durationSeconds: 10,
+          generatedAt: new Date().toISOString(),
+          status: 'completed'
+        });
+        setVideoSaved(true);
+      } catch (err: any) {
+         alert("Error uploading video: " + err.message);
+      } finally {
+        setGeneratingVideo(false);
+      }
     }
   };
 
@@ -564,20 +602,40 @@ export function CampaignGeneratorPanel({ initialSongId }: { initialSongId?: stri
                         value={videoPrompt} onChange={e => setVideoPrompt(e.target.value)}
                         className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-sm text-white/80 focus:outline-none focus:border-white/30"
                       />
-                      <CampaignActionButtons
-                        type="video"
-                        prompt={videoPrompt}
-                        onGenerate={() => setIsVideoModalOpen(true)}
-                        onSaveAsset={handleSaveVideoAsset}
-                        isGenerating={generatingVideo}
-                        isGenerated={!!videoResult}
-                        isSaved={videoSaved}
-                      />
+                      <div className="flex items-center gap-4">
+                        <CampaignActionButtons
+                          type="video"
+                          prompt={videoPrompt}
+                          onGenerate={() => setIsVideoModalOpen(true)}
+                          onSaveAsset={handleSaveVideoAsset}
+                          isGenerating={generatingVideo}
+                          isGenerated={!!videoResult}
+                          isSaved={videoSaved}
+                        />
+                        <div className="h-4 border-l border-white/10 pt-2"></div>
+                        <div className="pt-2">
+                          <input 
+                            type="file" 
+                            accept="video/mp4,video/webm" 
+                            className="hidden" 
+                            ref={fileInputRef} 
+                            onChange={handleUploadExternalVideo}
+                          />
+                          <button
+                            onClick={() => fileInputRef.current?.click()}
+                            disabled={generatingVideo}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all bg-white/5 border border-white/10 text-white/50 hover:bg-white/10 hover:text-white disabled:opacity-40"
+                          >
+                            <UploadCloud className="w-3 h-3" />
+                            Upload FlowTV MP4
+                          </button>
+                        </div>
+                      </div>
                       <GeneratedAssetPreview
                         type="video"
                         url={videoResult?.videoUrl || null}
                         prompt={videoPrompt}
-                        model={videoResult?.model}
+                        model={videoResult?.model === 'flowtv-external' ? 'FlowTV (External)' : videoResult?.model}
                         generatedAt={videoResult?.generatedAt}
                         isPlaceholder={videoResult?.model?.includes('dev')}
                         hue={videoResult ? 280 : undefined}

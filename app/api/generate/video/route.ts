@@ -98,13 +98,23 @@ export async function POST(req: Request) {
     }
 
     // ═══════════════════════════════════════════
-    // DEVELOPMENT FALLBACK: Return placeholder
+    // DEVELOPMENT FALLBACK: Return placeholder video
     // ═══════════════════════════════════════════
-    const seed = prompt.split('').reduce((acc: number, c: string) => acc + c.charCodeAt(0), 0) % 10000;
-    const hue = seed % 360;
+    let videoUrl = `placeholder:${prompt.substring(0, 10)}`;
+    const fs = require('fs');
+    const path = require('path');
+    try {
+      const samplePath = path.join(process.cwd(), 'scratch', 'sample.mp4');
+      if (fs.existsSync(samplePath)) {
+        const videoBuffer = fs.readFileSync(samplePath);
+        videoUrl = `data:video/mp4;base64,${videoBuffer.toString('base64')}`;
+      }
+    } catch (e) {
+      console.error('Failed to load sample mp4:', e);
+    }
 
     return NextResponse.json({
-      videoUrl: `placeholder:${seed}`,
+      videoUrl,
       mimeType: 'video/mp4',
       prompt,
       provider: 'google',
@@ -113,7 +123,6 @@ export async function POST(req: Request) {
       generatedAt: new Date().toISOString(),
       status: 'completed',
       _placeholder: true,
-      _hue: hue,
     });
   } catch (err: any) {
     console.error('Video generation error:', err);
