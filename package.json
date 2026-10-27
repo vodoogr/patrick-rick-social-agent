@@ -11,10 +11,10 @@
     "next": "latest",
     "react": "latest",
     "react-dom": "latest",
-    "@supabase/supabase-js": "^2.0.0",
     "mcp-handler": "^2.3.0",
     "@modelcontextprotocol/server": "^2.0.0",
-    "zod": "^4.2.0"
+    "zod": "^4.2.0",
+    "@neondatabase/serverless": "^1.0.0"
   },
   "devDependencies": {
     "typescript": "^5.0.0"
