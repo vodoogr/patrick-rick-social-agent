@@ -1,46 +1,127 @@
 import { createMcpHandler } from "mcp-handler";
 import { z } from "zod";
 import { timingSafeEqual } from "node:crypto";
-import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { getNeon } from "@/lib/neonDb";
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-const out = (value: unknown) => ({content:[{type:"text" as const,text:JSON.stringify(value)}]});
-const error = (message:string) => ({isError:true,content:[{type:"text" as const,text:message}]});
-const handler = createMcpHandler(server => {
- server.registerTool("workspace_status",{description:"Inspect current capabilities; scheduling and publishing are disabled.", inputSchema:z.object({})},async()=>out({phase:"drafts_only",canSchedule:false,canPublish:false,requiresApproval:true,databaseConfigured:Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY)}));
- server.registerTool("list_content_drafts",{description:"Read proposed posts, without publishing.",inputSchema:z.object({artist:z.enum(["patrick_rick","chris_rick","patrick_meets_rico"]).optional(),limit:z.number().int().min(1).max(25).default(10)})},async({artist,limit})=>{
-  try {
-   let q=getSupabaseAdmin().from("content_drafts").select("id,artist,platform,title,era,caption,planned_at,status,created_at").order("created_at",{ascending:false}).limit(limit);
-   if(artist)q=q.eq("artist",artist);
-   const {data,error:e}=await q;
-   return e?error("Unable to list drafts; verify database migration."):out({drafts:data??[]});
-  }catch{return error("Database connection unavailable.");}
- });
- server.registerTool("create_content_draft",{description:"Store a DRAFT only when asked; never approves, schedules or publishes.",inputSchema:z.object({
-   artist:z.enum(["patrick_rick","chris_rick","patrick_meets_rico"]),
-   platform:z.enum(["instagram","tiktok","youtube"]),
-   title:z.string().trim().min(1).max(160),
-   era:z.string().max(100).optional(),
-   caption:z.string().trim().min(1).max(4000),
-   planned_at:z.string().datetime({offset:true}).optional()
- })},async(input)=>{
-  try{
-   const {data,error:e}=await getSupabaseAdmin().from("content_drafts").insert({...input,status:"DRAFT"}).select("id,artist,platform,title,era,caption,planned_at,status,created_at").single();
-   return e?error("Unable to save draft; verify migration."):out({saved:true,draft:data,published:false,scheduled:false});
-  }catch{return error("Database connection unavailable.");}
- });
+
+function result(value: unknown) {
+  return { content: [{ type: "text" as const, text: JSON.stringify(value) }] };
+}
+
+function fail(message: string) {
+  return { isError: true, content: [{ type: "text" as const, text: message }] };
+}
+
+const handler = createMcpHandler((server) => {
+  server.registerTool(
+    "workspace_status",
+    {
+      description: "Inspect active capabilities. Scheduling and publishing are disabled.",
+      inputSchema: z.object({}),
+    },
+    async () => result({
+      project: "Patrick Rick Social Agent",
+      phase: "drafts_only",
+      database: "Neon PostgreSQL",
+      databaseConfigured: Boolean(process.env.DATABASE_URL),
+      canSchedule: false,
+      canPublish: false,
+      requiresHumanApproval: true,
+    })
+  );
+
+  server.registerTool(
+    "list_content_drafts",
+    {
+      description: "List content drafts without scheduling or publishing.",
+      inputSchema: z.object({
+        artist: z.enum(["patrick_rick", "chris_rick", "patrick_meets_rico"]).optional(),
+        limit: z.number().int().min(1).max(25).default(10),
+      }),
+    },
+    async ({ artist, limit }) => {
+      try {
+        const sql = getNeon();
+        const rows = artist
+          ? await sql`SELECT id, artist, platform, title, era, caption, planned_at,
+                              status, created_at
+                      FROM content_drafts WHERE artist = ${artist}
+                      ORDER BY created_at DESC LIMIT ${limit}`
+          : await sql`SELECT id, artist, platform, title, era, caption, planned_at,
+                              status, created_at
+                      FROM content_drafts
+                      ORDER BY created_at DESC LIMIT ${limit}`;
+
+        return result({ drafts: rows });
+      } catch {
+        return fail("Could not load drafts. Verify Neon DATABASE_URL and database/schema.sql.");
+      }
+    }
+  );
+
+  server.registerTool(
+    "create_content_draft",
+    {
+      description: "Save a DRAFT only on user request. Never publishes, approves or schedules.",
+      inputSchema: z.object({
+        artist: z.enum(["patrick_rick", "chris_rick", "patrick_meets_rico"]),
+        platform: z.enum(["instagram", "tiktok", "youtube"]),
+        title: z.string().trim().min(1).max(160),
+        era: z.string().trim().max(100).optional(),
+        caption: z.string().trim().min(1).max(4000),
+        planned_at: z.string().datetime({ offset: true }).optional(),
+      }),
+    },
+    async ({ artist, platform, title, era, caption, planned_at }) => {
+      try {
+        const sql = getNeon();
+        const rows = await sql`
+          INSERT INTO content_drafts (
+            artist, platform, title, era, caption, planned_at, status
+          ) VALUES (
+            ${artist}, ${platform}, ${title}, ${era ?? null},
+            ${caption}, CAST(${planned_at ?? null} AS timestamptz), 'DRAFT'
+          )
+          RETURNING id, artist, platform, title, era, caption,
+                    planned_at, status, created_at
+        `;
+
+        return result({ saved: true, draft: rows[0], scheduled: false, published: false });
+      } catch {
+        return fail("Could not save draft. Verify Neon connection and schema migration.");
+      }
+    }
+  );
 });
-function authorized(req:Request):boolean{
- const token=process.env.AGENT_MCP_TOKEN;
- if(!token||token.length<32)return false;
- const h=req.headers.get("authorization")??"";
- if(!h.startsWith("Bearer "))return false;
- const a=Buffer.from(h.slice(7));const b=Buffer.from(token);
- return a.length===b.length&&timingSafeEqual(a,b);
+
+function authorized(request: Request): boolean {
+  const secret = process.env.AGENT_MCP_TOKEN;
+  if (!secret || secret.length < 32) return false;
+
+  const header = request.headers.get("authorization") ?? "";
+  if (!header.startsWith("Bearer ")) return false;
+
+  const incoming = Buffer.from(header.slice(7), "utf8");
+  const expected = Buffer.from(secret, "utf8");
+  return incoming.length === expected.length &&
+    timingSafeEqual(incoming, expected);
 }
-async function secured(req:Request){
- if(!process.env.AGENT_MCP_TOKEN||process.env.AGENT_MCP_TOKEN.length<32)return Response.json({error:"Not configured"},{status:503});
- if(!authorized(req))return Response.json({error:"Unauthorized"},{status:401,headers:{"WWW-Authenticate":'Bearer realm="Patrick Rick MCP"'}});
- return handler(req);
+
+async function secured(request: Request): Promise<Response> {
+  if (!process.env.AGENT_MCP_TOKEN || process.env.AGENT_MCP_TOKEN.length < 32) {
+    return Response.json({ error: "MCP server not configured" }, { status: 503 });
+  }
+
+  if (!authorized(request)) {
+    return Response.json({ error: "Unauthorized" }, {
+      status: 401,
+      headers: { "WWW-Authenticate": 'Bearer realm="Patrick Rick MCP"' },
+    });
+  }
+
+  return handler(request);
 }
-export {secured as GET,secured as POST,secured as DELETE};
+
+export { secured as GET, secured as POST, secured as DELETE };
