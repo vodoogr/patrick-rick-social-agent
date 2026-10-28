@@ -1,4 +1,6 @@
-import { createMcpHandler } from "mcp-handler";
+import { createMcpHandler, McpServer } from "@modelcontextprotocol/server";
+import { requireMcpAuth } from "@better-auth/mcp";
+import { auth, MCP_RESOURCE, isOwnerEmail } from "@/lib/auth";
 import { z } from "zod";
 import { timingSafeEqual } from "node:crypto";
 import { getNeon } from "@/lib/neonDb";
@@ -14,7 +16,8 @@ function fail(message: string) {
   return { isError: true, content: [{ type: "text" as const, text: message }] };
 }
 
-const handler = createMcpHandler((server) => {
+const handler = createMcpHandler(() => {
+  const server = new McpServer({ name: "patrick-rick-social-agent", version: "0.1.0" });
   server.registerTool(
     "workspace_status",
     {
@@ -94,7 +97,8 @@ const handler = createMcpHandler((server) => {
       }
     }
   );
-});
+  return server;
+}, { legacy: "reject" });
 
 function authorized(request: Request): boolean {
   const secret = process.env.AGENT_MCP_TOKEN;
@@ -121,7 +125,20 @@ async function secured(request: Request): Promise<Response> {
     });
   }
 
-  return handler(request);
+  return handler.fetch(request);
 }
 
-export { secured as GET, secured as POST, secured as DELETE };
+const oauthSecured = requireMcpAuth(auth, async (request, claims) => {
+  if (typeof claims.sub !== "string") return Response.json({ error: "Forbidden" }, { status: 403 });
+  const rows = await getNeon()`SELECT email FROM "user" WHERE id = ${claims.sub}`;
+  if (!isOwnerEmail(rows[0]?.email)) return Response.json({ error: "Forbidden" }, { status: 403 });
+  return handler.fetch(request);
+}, { resource: MCP_RESOURCE, requiredScopes: ["mcp:tools"] });
+
+export async function POST(request: Request) {
+  try {
+    return process.env.PATRICK_MCP_AUTH_MODE === "oauth" ? await oauthSecured(request) : await secured(request);
+  } catch {
+    return Response.json({ error: "Authentication service unavailable" }, { status: 503 });
+  }
+}

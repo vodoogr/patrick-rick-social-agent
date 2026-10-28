@@ -33,7 +33,7 @@ export default function OwnerSetup() {
   return (
     <main style={{ maxWidth: 460, margin: "70px auto", fontFamily: "Arial,sans-serif", padding: 24 }}>
       <h1>Patrick Rick · Primer acceso</h1>
-      <p>Uso exclusivo del propietario. Introduce aquí la clave inicial que guardaste en Vercel. Nunca la envíes por chat.</p>
+      <p>Uso exclusivo del propietario. Introduce aquí la clave PATRICK_SETUP_TOKEN que guardaste en Vercel. Nunca la envíes por chat.</p>
       <form onSubmit={submit} style={{ display: "grid", gap: 14 }}>
         <label>Correo autorizado<input type="email" required autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} style={{ display: "block", width: "100%", padding: 10 }}/></label>
         <label>Nueva contraseña<input type="password" minLength={14} required autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} style={{ display: "block", width: "100%", padding: 10 }}/></label>

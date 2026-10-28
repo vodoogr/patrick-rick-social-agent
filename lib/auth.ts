@@ -6,10 +6,19 @@ import { cimd } from "@better-auth/cimd";
 import { fetchClientMetadataResource } from "@better-auth/cimd/node";
 import { Pool } from "pg";
 import { createHash, timingSafeEqual } from "node:crypto";
-import { getNeon } from "@/lib/neonDb";
+import { getNeon } from "./neonDb";
 
-export const APP_ORIGIN = (process.env.PATRICK_APP_ORIGIN || "https://patrick-rick-social-agent.vercel.app").replace(/\/$/, "");
+const configuredOrigin = process.env.PATRICK_APP_ORIGIN ||
+  (process.env.VERCEL_BRANCH_URL ? `https://${process.env.VERCEL_BRANCH_URL}` : "http://localhost:3000");
+const originUrl = new URL(configuredOrigin);
+if (originUrl.origin !== configuredOrigin.replace(/\/$/, "") ||
+    (originUrl.protocol !== "https:" && !(originUrl.protocol === "http:" && ["localhost", "127.0.0.1"].includes(originUrl.hostname)))) {
+  throw new Error("PATRICK_APP_ORIGIN must be an HTTPS origin (HTTP loopback for development)");
+}
+export const APP_ORIGIN = originUrl.origin;
 export const MCP_RESOURCE = APP_ORIGIN + "/api/mcp";
+export const isOwnerEmail = (email?: string | null) => Boolean(process.env.PATRICK_OWNER_EMAIL?.trim()) &&
+  email?.trim().toLowerCase() === process.env.PATRICK_OWNER_EMAIL?.trim().toLowerCase();
 
 function safeMatches(actual: string, expected: string) {
   const a = createHash("sha256").update(actual).digest();
@@ -20,6 +29,8 @@ function safeMatches(actual: string, expected: string) {
 export const auth = betterAuth({
   baseURL: APP_ORIGIN,
   basePath: "/api/auth",
+  trustedOrigins: [APP_ORIGIN],
+  disabledPaths: ["/token", "/update-user", "/change-email", "/delete-user"],
   secret: process.env.BETTER_AUTH_SECRET,
   database: new Pool({
     connectionString: process.env.DATABASE_URL,
@@ -30,9 +41,12 @@ export const auth = betterAuth({
   emailAndPassword: { enabled: true, minPasswordLength: 14 },
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
+      if (ctx.path === "/sign-in/email" && !isOwnerEmail(String(ctx.body?.email ?? ""))) {
+        throw new APIError("FORBIDDEN", { message: "Access denied" });
+      }
       if (ctx.path !== "/sign-up/email") return;
       const owner = process.env.PATRICK_OWNER_EMAIL?.trim().toLowerCase();
-      const setupSecret = process.env.AGENT_MCP_TOKEN;
+      const setupSecret = process.env.PATRICK_SETUP_TOKEN;
       const supplied = ctx.headers?.get("x-patrick-setup-token") ?? "";
       const email = String(ctx.body?.email ?? "").trim().toLowerCase();
       if (!owner || !setupSecret || setupSecret.length < 32 ||
@@ -54,10 +68,15 @@ export const auth = betterAuth({
           if (!owner || user.email.trim().toLowerCase() !== owner) {
             throw new APIError("FORBIDDEN", { message: "Only the project owner may create an account" });
           }
-          return { data: user };
+          return { data: { ...user, email: user.email.trim().toLowerCase() } };
         },
       },
     },
+    session: { create: { before: async (session) => {
+      const rows = await getNeon()`SELECT email FROM "user" WHERE id = ${session.userId}`;
+      if (!isOwnerEmail(rows[0]?.email)) throw new APIError("FORBIDDEN", { message: "Access denied" });
+      return { data: session };
+    } } },
   },
   plugins: [
     jwt(),
@@ -66,6 +85,15 @@ export const auth = betterAuth({
       consentPage: "/consent",
       resource: MCP_RESOURCE,
       scopes: ["openid", "profile", "offline_access", "mcp:tools"],
+      grantTypes: ["authorization_code", "refresh_token"],
+      allowDynamicClientRegistration: false,
+      allowUnauthenticatedClientRegistration: false,
+      storeClientSecret: "hashed",
+      storeTokens: "hashed",
+      accessTokenExpiresIn: 300,
+      refreshTokenReuseInterval: 0,
+      clientPrivileges: async ({ user, action }) => isOwnerEmail(user?.email) && action !== "configure-client-credentials-scopes",
+      resourcePrivileges: async ({ user }) => isOwnerEmail(user?.email),
     }),
     cimd({ fetchClientMetadataResource, metadataProfile: "mcp-2026-07-28" }),
   ],
