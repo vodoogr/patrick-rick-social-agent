@@ -73,9 +73,9 @@ export const auth = betterAuth({
         },
       },
     },
-    session: { create: { before: async (session) => {
-      const rows = await getNeon()`SELECT email FROM "user" WHERE id = ${session.userId}`;
-      if (!isOwnerEmail(rows[0]?.email)) throw new APIError("FORBIDDEN", { message: "Access denied" });
+    session: { create: { before: async (session, context) => {
+      const user = await context?.context.internalAdapter.findUserById(session.userId);
+      if (!isOwnerEmail(user?.email)) throw new APIError("FORBIDDEN", { message: "Access denied" });
       return { data: session };
     } } },
   },
