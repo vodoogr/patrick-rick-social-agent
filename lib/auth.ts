@@ -51,6 +51,7 @@ export const auth = betterAuth({
       const email = String(ctx.body?.email ?? "").trim().toLowerCase();
       if (!owner || !setupSecret || setupSecret.length < 32 ||
           !supplied || !safeMatches(supplied, setupSecret) || email !== owner) {
+        console.warn("Owner setup rejected", { ownerConfigured: Boolean(owner), setupConfigured: Boolean(setupSecret), setupLongEnough: Boolean(setupSecret && setupSecret.length >= 32), setupProvided: Boolean(supplied), setupMatches: Boolean(setupSecret && supplied && safeMatches(supplied, setupSecret)), emailMatches: Boolean(owner && email === owner) });
         throw new APIError("FORBIDDEN", { message: "Owner registration is not authorized" });
       }
       // Never permit new sign-ups once the first account exists.
