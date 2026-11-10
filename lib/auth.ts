@@ -49,15 +49,31 @@ export const auth = betterAuth({
       const setupSecret = process.env.PATRICK_SETUP_TOKEN;
       const supplied = ctx.headers?.get("x-patrick-setup-token") ?? "";
       const email = String(ctx.body?.email ?? "").trim().toLowerCase();
-      if (!owner || !setupSecret || setupSecret.length < 32 ||
-          !supplied || !safeMatches(supplied, setupSecret) || email !== owner) {
-        console.warn("Owner setup rejected", { ownerConfigured: Boolean(owner), setupConfigured: Boolean(setupSecret), setupLongEnough: Boolean(setupSecret && setupSecret.length >= 32), setupProvided: Boolean(supplied), setupMatches: Boolean(setupSecret && supplied && safeMatches(supplied, setupSecret)), emailMatches: Boolean(owner && email === owner) });
+      // The diagnostic is a fixed code only; never log credentials, email, or supplied tokens.
+      const rejection =
+        !owner ? "OWNER_NOT_CONFIGURED" :
+        !setupSecret ? "SETUP_NOT_CONFIGURED" :
+        setupSecret.length < 32 ? "SETUP_TOO_SHORT" :
+        !supplied ? "SETUP_NOT_PROVIDED" :
+        !safeMatches(supplied, setupSecret) ? "SETUP_MISMATCH" :
+        email !== owner ? "OWNER_EMAIL_MISMATCH" : null;
+      if (rejection) {
+        console.warn("OWNER_SETUP_DENIED", { reason: rejection });
         throw new APIError("FORBIDDEN", { message: "Owner registration is not authorized" });
       }
-      // Never permit new sign-ups once the first account exists.
-      const alreadyRegistered = await getNeon()`SELECT id FROM "user" LIMIT 1`;
-      if (alreadyRegistered.length > 0) {
-        throw new APIError("FORBIDDEN", { message: "Owner already registered" });
+      console.info("OWNER_SETUP_GUARD_PASSED");
+      // Do not leak database errors or expose registration state through public responses.
+      try {
+        const alreadyRegistered = await getNeon()`SELECT id FROM "user" LIMIT 1`;
+        if (alreadyRegistered.length > 0) {
+          console.warn("OWNER_SETUP_ALREADY_REGISTERED");
+          throw new APIError("FORBIDDEN", { message: "Owner registration is not authorized" });
+        }
+        console.info("OWNER_SETUP_DB_CHECK_PASSED");
+      } catch (error) {
+        if (error instanceof APIError) throw error;
+        console.error("OWNER_SETUP_DB_CHECK_FAILED");
+        throw new APIError("INTERNAL_SERVER_ERROR", { message: "Owner registration unavailable" });
       }
     }),
   },
@@ -67,15 +83,28 @@ export const auth = betterAuth({
         before: async (user) => {
           const owner = process.env.PATRICK_OWNER_EMAIL?.trim().toLowerCase();
           if (!owner || user.email.trim().toLowerCase() !== owner) {
+            console.warn("OWNER_USER_CREATE_DENIED");
             throw new APIError("FORBIDDEN", { message: "Only the project owner may create an account" });
           }
+          console.info("OWNER_USER_CREATE_GUARD_PASSED");
           return { data: { ...user, email: user.email.trim().toLowerCase() } };
         },
       },
     },
     session: { create: { before: async (session, context) => {
-      const user = await context?.context.internalAdapter.findUserById(session.userId);
-      if (!isOwnerEmail(user?.email)) throw new APIError("FORBIDDEN", { message: "Access denied" });
+      let user;
+      try {
+        user = await context?.context.internalAdapter.findUserById(session.userId);
+      } catch {
+        console.error("OWNER_SESSION_LOOKUP_FAILED");
+        throw new APIError("INTERNAL_SERVER_ERROR", { message: "Session unavailable" });
+      }
+      if (!isOwnerEmail(user?.email)) {
+        // This can distinguish a transaction-visibility issue from an owner mismatch.
+        console.warn("OWNER_SESSION_CREATE_DENIED", { userFound: Boolean(user) });
+        throw new APIError("FORBIDDEN", { message: "Access denied" });
+      }
+      console.info("OWNER_SESSION_GUARD_PASSED");
       return { data: session };
     } } },
   },
