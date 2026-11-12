@@ -36,6 +36,13 @@ test("unapproved owner registration and non-owner sign-in are denied before data
     }));
     assert.equal(response.status, 403);
   }
+  // Bootstrap has been retired: even the configured owner's sign-up is denied before DB access.
+  const ownerSignUp = await auth.handler(new Request("http://localhost:3000/api/auth/sign-up/email", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: "http://localhost:3000" },
+    body: JSON.stringify({ name: "owner", email: "owner@example.invalid", password: "not-a-real-password-12345" }),
+  }));
+  assert.equal(ownerSignUp.status, 403);
   assert.equal(await verifyOAuthQueryParams("client_id=evil&scope=mcp:tools", process.env.BETTER_AUTH_SECRET!), false);
 });
 
