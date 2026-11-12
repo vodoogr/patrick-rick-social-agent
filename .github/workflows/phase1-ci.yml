@@ -1,0 +1,39 @@
+name: Phase 1 — tests and build
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Test, typecheck, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CI: "true"
+      BETTER_AUTH_SECRET: "ci-only-not-a-deployment-secret-1234567890"
+      PATRICK_APP_ORIGIN: "http://localhost:3000"
+      PATRICK_OWNER_EMAIL: "owner@example.invalid"
+      PATRICK_MCP_AUTH_MODE: "static"
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24"
+          cache: "npm"
+      - name: Install pinned dependencies
+        run: npm ci --ignore-scripts
+      - name: Validate local migration script syntax
+        run: node --check scripts/migrate-owner.mjs
+      - name: Unit and auth boundary tests
+        run: npm test
+      - name: TypeScript check
+        run: npx tsc --noEmit
+      - name: Next.js production build
+        run: npm run build
