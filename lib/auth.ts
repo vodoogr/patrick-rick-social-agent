@@ -5,8 +5,6 @@ import { mcp } from "@better-auth/mcp";
 import { cimd } from "@better-auth/cimd";
 import { fetchClientMetadataResource } from "@better-auth/cimd/node";
 import { Pool } from "pg";
-import { createHash, timingSafeEqual } from "node:crypto";
-import { getNeon } from "./neonDb";
 
 const configuredOrigin = process.env.PATRICK_APP_ORIGIN ||
   (process.env.VERCEL_BRANCH_URL ? `https://${process.env.VERCEL_BRANCH_URL}` : "http://localhost:3000");
@@ -19,12 +17,6 @@ export const APP_ORIGIN = originUrl.origin;
 export const MCP_RESOURCE = APP_ORIGIN + "/api/mcp";
 export const isOwnerEmail = (email?: string | null) => Boolean(process.env.PATRICK_OWNER_EMAIL?.trim()) &&
   email?.trim().toLowerCase() === process.env.PATRICK_OWNER_EMAIL?.trim().toLowerCase();
-
-function safeMatches(actual: string, expected: string) {
-  const a = createHash("sha256").update(actual).digest();
-  const b = createHash("sha256").update(expected).digest();
-  return timingSafeEqual(a, b);
-}
 
 export const auth = betterAuth({
   baseURL: APP_ORIGIN,
@@ -41,39 +33,12 @@ export const auth = betterAuth({
   emailAndPassword: { enabled: true, minPasswordLength: 14 },
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
+      // Fail closed at Better Auth level even if another route bypasses the API wrapper.
+      if (ctx.path === "/sign-up/email") {
+        throw new APIError("FORBIDDEN", { message: "Registration closed" });
+      }
       if (ctx.path === "/sign-in/email" && !isOwnerEmail(String(ctx.body?.email ?? ""))) {
         throw new APIError("FORBIDDEN", { message: "Access denied" });
-      }
-      if (ctx.path !== "/sign-up/email") return;
-      const owner = process.env.PATRICK_OWNER_EMAIL?.trim().toLowerCase();
-      const setupSecret = process.env.PATRICK_SETUP_TOKEN;
-      const supplied = ctx.headers?.get("x-patrick-setup-token") ?? "";
-      const email = String(ctx.body?.email ?? "").trim().toLowerCase();
-      // The diagnostic is a fixed code only; never log credentials, email, or supplied tokens.
-      const rejection =
-        !owner ? "OWNER_NOT_CONFIGURED" :
-        !setupSecret ? "SETUP_NOT_CONFIGURED" :
-        setupSecret.length < 32 ? "SETUP_TOO_SHORT" :
-        !supplied ? "SETUP_NOT_PROVIDED" :
-        !safeMatches(supplied, setupSecret) ? "SETUP_MISMATCH" :
-        email !== owner ? "OWNER_EMAIL_MISMATCH" : null;
-      if (rejection) {
-        console.warn("OWNER_SETUP_DENIED", { reason: rejection });
-        throw new APIError("FORBIDDEN", { message: "Owner registration is not authorized" });
-      }
-      console.info("OWNER_SETUP_GUARD_PASSED");
-      // Do not leak database errors or expose registration state through public responses.
-      try {
-        const alreadyRegistered = await getNeon()`SELECT id FROM "user" LIMIT 1`;
-        if (alreadyRegistered.length > 0) {
-          console.warn("OWNER_SETUP_ALREADY_REGISTERED");
-          throw new APIError("FORBIDDEN", { message: "Owner registration is not authorized" });
-        }
-        console.info("OWNER_SETUP_DB_CHECK_PASSED");
-      } catch (error) {
-        if (error instanceof APIError) throw error;
-        console.error("OWNER_SETUP_DB_CHECK_FAILED");
-        throw new APIError("INTERNAL_SERVER_ERROR", { message: "Owner registration unavailable" });
       }
     }),
   },
