@@ -33,7 +33,7 @@ export default function SignInPage() {
         <button type="submit" disabled={busy} style={{ padding: 13 }}>{busy ? "Conectando…" : "Iniciar sesión"}</button>
       </form>
       <p role="status">{message}</p>
-      <p>¿Primera vez? El registro del propietario se realiza desde <a href="/setup">configuración inicial</a>.</p>
+      <p>Acceso exclusivo del propietario. El registro inicial está cerrado.</p>
     </main>
   );
 }
