@@ -29,6 +29,8 @@ jobs:
           cache: "npm"
       - name: Install pinned dependencies
         run: npm ci --ignore-scripts
+      - name: Validate local migration script syntax
+        run: node --check scripts/migrate-owner.mjs
       - name: Unit and auth boundary tests
         run: npm test
       - name: TypeScript check
