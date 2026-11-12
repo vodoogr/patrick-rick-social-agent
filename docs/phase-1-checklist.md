@@ -23,3 +23,28 @@ Vercel deployment protection may restrict external MCP access; preserve authenti
 
 ### Not implemented
 Voice-triggered external actions, social OAuth/API permissioning, rendering, scheduling and automatic posting require subsequent work and user approval.
+
+## Estado verificado — 12 Nov 2026 (reanudación después del fallo del chat)
+
+**Entornos / base de datos**
+- Neon project `patrick-rick-ai` (ID `royal-tree-12332492`), PostgreSQL 18; base `patrick_rick_db`.
+- Preview: `br-odd-wind-b9y5r6oz` (`preview/feature/mcp-drafts-phase1`). 13 tablas, 1 usuario propietario, 1 cuenta credential, 4 sesiones. `content_drafts`: 0.
+- Production: `br-cold-bird-b9xib3uw` (`production`). 13 tablas, 0 usuarios, 0 cuentas, 0 sesiones y 0 borradores.
+- Diff SQL de esquemas Preview vs Production: vacío. No duplicar ni reconstruir tablas.
+- **MIGRACIÓN DE CUENTA PENDIENTE:** trasladar solo el propietario y la cuenta de credenciales; **no** sesiones ni tokens. El intento de transportar un hash de contraseña a través del asistente fue bloqueado por los controles de seguridad. No sortear ese bloqueo ni copiar secretos a chats/logs/commits. Requiere un flujo de traslado de datos directamente entre sistemas, fuera del modelo, o un procedimiento de alta segura revisado.
+- No se han realizado modificaciones en los registros de Production durante la reanudación.
+
+**Aplicación, autenticación y despliegues**
+- Último Preview: commit `990451f` en `feature/mcp-drafts-phase1`, deployment `dpl_8qukAMybc1EG3tepPcHcRS6R9FLL`: READY.
+- Endpoints Preview comprobados en vivo: `GET /api/health` → 200, `database: connected`, `publishingEnabled: false`; `GET /sign-in` → 200; `GET /api/auth/ok` → 200.
+- Discovery OAuth: `/.well-known/oauth-authorization-server/api/auth` y `/.well-known/oauth-protected-resource/api/mcp` → 200. `/.well-known/oauth-authorization-server` raíz → 404; validar contra el cliente MCP real antes de interpretar este 404 como fallo.
+- Production deployment `dpl_6z66e2TjgXvPpREuUWBHUFxk3dtZ` sigue en commit antiguo `2df6afe` de `main`: ERROR de build (`lint_or_type_error` / `npm run build`). La rama feature estaba 43 commits por delante de `main`, sin merge.
+- Listado de variables del proyecto en Vercel: error 403 permission denied. No se consultaron ni expusieron valores secretos.
+- Plugin privado `patrick-rick-creative-director` v0.2.0 existe, todavía sin conexión MCP activa.
+
+**Orden obligatorio para continuar**
+1. Migrar la cuenta propietaria con un mecanismo seguro, **sin transportar el hash a través del asistente**, y comprobar usuarios/cuentas en Production.
+2. Verificar configuración de Vercel Production (`DATABASE_URL`, `BETTER_AUTH_SECRET`, `PATRICK_OWNER_EMAIL`, `PATRICK_APP_ORIGIN`) con permisos adecuados, sin mostrar valores.
+3. Validar sign-in y ciclo OAuth/MCP de extremo a extremo; mantener `PATRICK_MCP_AUTH_MODE` sin activar hasta que pase.
+4. Revisar PR feature → main, ejecutar build y pruebas antes de desplegar producción.
+5. Conectar plugin MCP cuando Production esté operativa; probar listar/crear borradores. No habilitar scheduling ni publicación automática sin autorización expresa.
