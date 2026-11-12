@@ -21,6 +21,7 @@ const handler = createMcpHandler(() => {
   server.registerTool(
     "workspace_status",
     {
+      _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
       description: "Inspect active capabilities. Scheduling and publishing are disabled.",
       inputSchema: z.object({}),
     },
@@ -38,6 +39,7 @@ const handler = createMcpHandler(() => {
   server.registerTool(
     "list_content_drafts",
     {
+      _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
       description: "List content drafts without scheduling or publishing.",
       inputSchema: z.object({
         artist: z.enum(["patrick_rick", "chris_rick", "patrick_meets_rico"]).optional(),
@@ -67,6 +69,7 @@ const handler = createMcpHandler(() => {
   server.registerTool(
     "create_content_draft",
     {
+      _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
       description: "Save a DRAFT only on user request. Never publishes, approves or schedules.",
       inputSchema: z.object({
         artist: z.enum(["patrick_rick", "chris_rick", "patrick_meets_rico"]),
