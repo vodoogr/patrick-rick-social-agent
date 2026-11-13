@@ -46,3 +46,15 @@ Todas usan OAuth `mcp:tools`; no se añaden endpoints de escritura ni se habilit
 6. Solo despues conectar la actualizacion del plugin privado. Mantener publicaciones bloqueadas.
 
 **Nota:** PDF y biblia conceptual no certifican existencia en Spotify, SUNO, discografia publicada ni estado de distribucion.
+
+## Descubrimiento de fuentes actuales — SUNO (13 Nov 2026)
+La conexion SUNO del usuario responde como `Patrick Rick` / `patrickrick`.
+- SUNO devuelve workspaces con nombre `BLUE ERA`, `YELLOW ERA`, `RED ERA`, `AGENTE` y otros; tambien playlists `BLUE`, `YELLOW`, `RED`, `MIDNIGHT FREQUENCIES`, `ITA: GLI AMORI PASSATI`, etc.
+- Busqueda de biblioteca: existe clip `54287b7f-fe5c-4870-afbd-7ddeb20c1e92` titulado `PR- BETTER IN MOTION` (16 Oct 2026). **No demuestra por si solo el tracklist completo de UNFOLD ni su publicacion.**
+- La playlist `MIDNIGHT FREQUENCIES` contiene 9 clips SUNO en el momento de la lectura, algunos son versiones/remixes de obras de otras eras.
+- `YELLOW` contiene 15 clips, incluyendo versiones alternativas: la cantidad no equivale al tracklist canonico del PDF.
+- `ITA: GLI AMORI PASSATI` contiene 14 clips, con numeracion discontinua: **no normalizar posiciones ni asumir que el album esta finalizado**.
+- SUNO no certifica distribucion en Spotify, ISRC, aprobacion de letras ni version final. La siguiente importacion debe guardar `clip_id`, fecha, playlist/workspace y relacion propuesta, sin reasignar automaticamente canciones canonicas.
+- Google Drive `Patrick`: encontradas carpetas ALMOST, pero la busqueda de `UNFOLD` no proporciono un documento de tracklist actual. Pendiente evidencia documental de sus albumes posteriores.
+
+**Principio:** convertir clips y playlists en *fuentes observadas*, no en estados de lanzamiento aprobados.
