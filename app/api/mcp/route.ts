@@ -192,6 +192,83 @@ const handler = createMcpHandler(() => {
     },
   );
 
+  // Snapshot rows represent observed album positions, not unique compositions.
+  // This reviewed, explicit snapshot cannot silently switch to a newer upload.
+  const reviewSnapshot = "d0286d0dc0cf03caf5289c872c94b60d1c6f7739364507011bd15f1cdc590915";
+  // These review tools are deliberately limited to the isolated Neon branch.
+  // Promotion to any other database requires an explicit reviewed change.
+  const isValidationBranch = async () => {
+    const sql = getNeon();
+    const rows = await sql`SELECT current_setting('neon.branch_id', true) AS branch_id,
+                                  current_setting('neon.project_id', true) AS project_id`;
+    return rows[0]?.branch_id === 'br-ancient-hill-b9o9k7e7' && rows[0]?.project_id === 'royal-tree-12332492';
+  };
+  server.registerTool(
+    "review_catalog_summary",
+    {
+      _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
+      description: "Read-only overview of the user-supplied Suno album screenshots; positions are not unique songs or releases.",
+      inputSchema: z.object({}),
+    },
+    async () => {
+      try {
+        if (!await isValidationBranch()) return fail("Review tools are restricted to the isolated validation branch.");
+        const sql = getNeon();
+        const rows = await sql`SELECT COUNT(*)::integer AS album_entries,
+          COALESCE(SUM(jsonb_array_length(tracks)),0)::integer AS track_positions
+          FROM catalog.review_album_snapshots WHERE snapshot_id=${reviewSnapshot}`;
+        const manifest = await sql`SELECT manifest FROM catalog.review_catalog_metadata WHERE snapshot_id=${reviewSnapshot}`;
+        if (!manifest.length || rows[0].album_entries !== 34 || rows[0].track_positions !== 543) return fail("Review snapshot missing or incomplete in this environment.");
+        return result({ snapshot: reviewSnapshot, coverage: rows[0], manifest: manifest[0].manifest,
+          note: "Observed screenshot positions; pending titles and publication status remain unverified." });
+      } catch { return fail("Review catalog unavailable in this environment."); }
+    },
+  );
+  server.registerTool(
+    "list_review_albums",
+    {
+      _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
+      description: "List album entries from reviewed user screenshots, including drafts and verification context.",
+      inputSchema: z.object({ query: z.string().trim().max(120).optional(), limit: z.number().int().min(1).max(50).default(50) }),
+    },
+    async ({ query, limit }) => {
+      try {
+        if (!await isValidationBranch()) return fail("Review tools are restricted to the isolated validation branch.");
+        const sql = getNeon();
+        const snapshot = await sql`SELECT 1 FROM catalog.review_catalog_metadata WHERE snapshot_id=${reviewSnapshot}`;
+        if (!snapshot.length) return fail("Review snapshot missing in this environment.");
+        const rows = await sql`SELECT album_id, album->>'album' AS title, album->>'artista' AS artist,
+          album->>'suno_estado' AS suno_status, album->>'numero_drive' AS project_number,
+          jsonb_array_length(tracks)::integer AS track_positions, album->'fuentes' AS evidence
+          FROM catalog.review_album_snapshots
+          WHERE snapshot_id=${reviewSnapshot} AND (${query ?? ""} = '' OR position(lower(${query ?? ""}) in lower(album->>'album')) > 0)
+          ORDER BY CASE WHEN album->>'numero_drive' ~ '^[0-9]+$' THEN (album->>'numero_drive')::integer ELSE 999 END, album->>'album'
+          LIMIT ${limit}`;
+        return result({ snapshot: reviewSnapshot, albums: rows, note: "Screenshot observations; Suno draft status is not Spotify publication status." });
+      } catch { return fail("Could not read review album entries."); }
+    },
+  );
+  server.registerTool(
+    "get_review_album_tracks",
+    {
+      _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
+      description: "Get screenshot-observed track positions and source notes; truncated titles and candidate matches remain pending.",
+      inputSchema: z.object({ album_id: z.string().regex(/^alb_[a-f0-9]{12}$/) }),
+    },
+    async ({ album_id }) => {
+      try {
+        if (!await isValidationBranch()) return fail("Review tools are restricted to the isolated validation branch.");
+        const sql = getNeon();
+        const snapshot = await sql`SELECT 1 FROM catalog.review_catalog_metadata WHERE snapshot_id=${reviewSnapshot}`;
+        if (!snapshot.length) return fail("Review snapshot missing in this environment.");
+        const rows = await sql`SELECT album, tracks FROM catalog.review_album_snapshots
+          WHERE snapshot_id=${reviewSnapshot} AND album_id=${album_id}`;
+        if (!rows.length) return fail("Album not found in review snapshot.");
+        return result({ snapshot: reviewSnapshot, ...rows[0], note: "Positions follow the screenshots. Similar titles are not automatically the same recording." });
+      } catch { return fail("Could not read review album tracks."); }
+    },
+  );
+
   return server;
 }, { legacy: "reject" });
 
@@ -237,3 +314,4 @@ export async function POST(request: Request) {
     return Response.json({ error: "Authentication service unavailable" }, { status: 503 });
   }
 }
+
