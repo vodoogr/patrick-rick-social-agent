@@ -25,7 +25,7 @@ export const auth = betterAuth({
   disabledPaths: ["/token", "/update-user", "/change-email", "/delete-user"],
   secret: process.env.BETTER_AUTH_SECRET,
   database: new Pool({
-    connectionString: process.env.DATABASE_URL,
+    connectionString: process.env.PATRICK_PREVIEW_DATABASE_URL || process.env.DATABASE_URL,
     max: 3,
     idleTimeoutMillis: 10_000,
     connectionTimeoutMillis: 5_000,
