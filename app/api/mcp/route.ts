@@ -5,6 +5,7 @@ import { z } from "zod";
 import { timingSafeEqual } from "node:crypto";
 import { getNeon } from "@/lib/neonDb";
 import { createVideoBrief } from "@/services/videoBrief";
+import { videoProductionSchema } from "@/services/videoProduction";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,6 +20,39 @@ function fail(message: string) {
 
 const handler = createMcpHandler(() => {
   const server = new McpServer({ name: "patrick-rick-social-agent", version: "0.1.0" });
+  const isPhase3Branch = async () => {
+    const sql = getNeon();
+    const rows = await sql`SELECT current_setting('neon.branch_id', true) AS branch_id,
+                                  current_setting('neon.project_id', true) AS project_id`;
+    return rows[0]?.branch_id === "br-lingering-lab-b9wniglt" && rows[0]?.project_id === "royal-tree-12332492";
+  };
+  server.registerTool("save_video_production_draft", {
+    _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
+    description: "On explicit request, save shot and asset references as a draft in the Phase 3 test database. Does not upload files, generate, schedule or publish.",
+    inputSchema: videoProductionSchema,
+  }, async (input) => {
+    try {
+      if (!await isPhase3Branch()) return fail("Video production drafts are restricted to the Phase 3 test branch.");
+      const sql = getNeon();
+      const rows = await sql`INSERT INTO public.video_production_drafts (artist, song, version, title, shots, assets)
+        VALUES (${input.artist}, ${input.song}, ${input.version}, ${input.title}, ${JSON.stringify(input.shots)}::jsonb, ${JSON.stringify(input.assets)}::jsonb)
+        RETURNING id, artist, song, version, title, shots, assets, status, created_at`;
+      return result({ draft: rows[0], filesUploaded: false, generated: false, scheduled: false, published: false });
+    } catch { return fail("Could not save the video production draft."); }
+  });
+  server.registerTool("list_video_production_drafts", {
+    _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
+    description: "List video production drafts and their shot and asset references from the isolated Phase 3 test database.",
+    inputSchema: z.object({ limit: z.number().int().min(1).max(25).default(10) }),
+  }, async ({ limit }) => {
+    try {
+      if (!await isPhase3Branch()) return fail("Video production drafts are restricted to the Phase 3 test branch.");
+      const sql = getNeon();
+      const rows = await sql`SELECT id, artist, song, version, title, shots, assets, status, created_at
+        FROM public.video_production_drafts ORDER BY created_at DESC LIMIT ${limit}`;
+      return result({ drafts: rows, note: "Asset references are metadata; files are not uploaded." });
+    } catch { return fail("Could not list video production drafts."); }
+  });
   server.registerTool(
     "prepare_video_brief",
     {
