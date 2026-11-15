@@ -4,6 +4,7 @@ import { auth, MCP_RESOURCE, isOwnerEmail } from "@/lib/auth";
 import { z } from "zod";
 import { timingSafeEqual } from "node:crypto";
 import { getNeon } from "@/lib/neonDb";
+import { createVideoBrief } from "@/services/videoBrief";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,6 +19,24 @@ function fail(message: string) {
 
 const handler = createMcpHandler(() => {
   const server = new McpServer({ name: "patrick-rick-social-agent", version: "0.1.0" });
+  server.registerTool(
+    "prepare_video_brief",
+    {
+      _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
+      description: "Prepare a structured video production brief from supplied facts. Does not save, generate, schedule or publish.",
+      inputSchema: z.object({
+        song: z.string().trim().min(1).max(160),
+        version: z.string().trim().min(1).max(160),
+        artist: z.string().trim().min(1).max(120),
+        location: z.string().trim().min(1).max(200),
+        concept: z.string().trim().min(1).max(1500),
+        wardrobe: z.string().trim().min(1).max(500),
+        visualStyle: z.string().trim().min(1).max(500),
+        audioReference: z.string().trim().max(500).optional(),
+      }),
+    },
+    async (input) => result(createVideoBrief(input)),
+  );
   server.registerTool(
     "workspace_status",
     {
