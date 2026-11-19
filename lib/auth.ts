@@ -5,6 +5,7 @@ import { mcp } from "@better-auth/mcp";
 import { cimd } from "@better-auth/cimd";
 import { fetchClientMetadataResource } from "@better-auth/cimd/node";
 import { Pool } from "pg";
+import { databaseConnection } from "./databaseEnvironment";
 
 const configuredOrigin = process.env.PATRICK_APP_ORIGIN ||
   (process.env.VERCEL_BRANCH_URL ? `https://${process.env.VERCEL_BRANCH_URL}` : "http://localhost:3000");
@@ -25,7 +26,7 @@ export const auth = betterAuth({
   disabledPaths: ["/token", "/update-user", "/change-email", "/delete-user"],
   secret: process.env.BETTER_AUTH_SECRET,
   database: new Pool({
-    connectionString: process.env.PATRICK_PREVIEW_DATABASE_URL || process.env.DATABASE_URL,
+    connectionString: databaseConnection() ?? "postgresql://unconfigured.invalid/patrick_rick_db",
     max: 3,
     idleTimeoutMillis: 10_000,
     connectionTimeoutMillis: 5_000,

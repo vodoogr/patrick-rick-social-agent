@@ -1,4 +1,4 @@
-// Run only against the explicitly identified isolated validation branch.
+// Run only against an explicitly configured isolated validation endpoint.
 // The connection string is read from stdin and never printed or saved.
 const { spawn } = require('node:child_process');
 const { randomBytes } = require('node:crypto');
@@ -12,7 +12,8 @@ async function main() {
   reader.close();
   if (process.stdin.isTTY) process.stdin.setRawMode(false);
   const config = JSON.parse(input);
-  assert.equal(config.branch, 'br-ancient-hill-b9o9k7e7');
+  assert.match(config.databaseHost, /^ep-[a-z0-9-]+\.[a-z0-9.-]+\.neon\.tech$/);
+  assert.equal(new URL(config.databaseUrl).hostname, config.databaseHost);
   assert.match(config.databaseUrl, /^postgres(?:ql)?:\/\//);
   const probe = net.createServer();
   await new Promise((resolve, reject) => probe.once('error', reject).listen(0, '127.0.0.1', resolve));
@@ -21,7 +22,7 @@ async function main() {
   const token = randomBytes(32).toString('hex');
   const origin = `http://127.0.0.1:${port}`;
   const child = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'start', '-H', '127.0.0.1', '-p', String(port)], {
-    env: { ...process.env, DATABASE_URL: config.databaseUrl, PATRICK_MCP_AUTH_MODE: 'static', AGENT_MCP_TOKEN: token,
+    env: { ...process.env, DATABASE_URL: config.databaseUrl, PATRICK_DATABASE_HOST: config.databaseHost, PATRICK_CATALOG_REVIEW_ENABLED: 'true', PATRICK_MCP_AUTH_MODE: 'static', AGENT_MCP_TOKEN: token,
       BETTER_AUTH_SECRET: randomBytes(32).toString('hex'), PATRICK_APP_ORIGIN: origin },
     stdio: 'ignore', windowsHide: true,
   });

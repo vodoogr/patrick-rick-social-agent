@@ -4,6 +4,7 @@ import { auth, MCP_RESOURCE, isOwnerEmail } from "@/lib/auth";
 import { z } from "zod";
 import { timingSafeEqual } from "node:crypto";
 import { getNeon } from "@/lib/neonDb";
+import { databaseCapability, databaseConnection } from "@/lib/databaseEnvironment";
 import { createVideoBrief } from "@/services/videoBrief";
 import { videoProductionSchema } from "@/services/videoProduction";
 
@@ -20,19 +21,13 @@ function fail(message: string) {
 
 const handler = createMcpHandler(() => {
   const server = new McpServer({ name: "patrick-rick-social-agent", version: "0.1.0" });
-  const isPhase3Branch = async () => {
-    const sql = getNeon();
-    const rows = await sql`SELECT current_setting('neon.branch_id', true) AS branch_id,
-                                  current_setting('neon.project_id', true) AS project_id`;
-    return rows[0]?.branch_id === "br-lingering-lab-b9wniglt" && rows[0]?.project_id === "royal-tree-12332492";
-  };
   server.registerTool("save_video_production_draft", {
     _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
-    description: "On explicit request, save shot and asset references as a draft in the Phase 3 test database. Does not upload files, generate, schedule or publish.",
+    description: "On explicit request, save shot and asset references as a draft in the configured database. Does not upload files, generate, schedule or publish.",
     inputSchema: videoProductionSchema,
   }, async (input) => {
     try {
-      if (!await isPhase3Branch()) return fail("Video production drafts are restricted to the Phase 3 test branch.");
+      if (!databaseCapability("PATRICK_VIDEO_DRAFTS_ENABLED")) return fail("Video production drafts are disabled in this environment.");
       const sql = getNeon();
       const rows = await sql`INSERT INTO public.video_production_drafts (artist, song, version, title, shots, assets)
         VALUES (${input.artist}, ${input.song}, ${input.version}, ${input.title}, ${JSON.stringify(input.shots)}::jsonb, ${JSON.stringify(input.assets)}::jsonb)
@@ -42,11 +37,11 @@ const handler = createMcpHandler(() => {
   });
   server.registerTool("list_video_production_drafts", {
     _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
-    description: "List video production drafts and their shot and asset references from the isolated Phase 3 test database.",
+    description: "List video production drafts and their shot and asset references from the configured database.",
     inputSchema: z.object({ limit: z.number().int().min(1).max(25).default(10) }),
   }, async ({ limit }) => {
     try {
-      if (!await isPhase3Branch()) return fail("Video production drafts are restricted to the Phase 3 test branch.");
+      if (!databaseCapability("PATRICK_VIDEO_DRAFTS_ENABLED")) return fail("Video production drafts are disabled in this environment.");
       const sql = getNeon();
       const rows = await sql`SELECT id, artist, song, version, title, shots, assets, status, created_at
         FROM public.video_production_drafts ORDER BY created_at DESC LIMIT ${limit}`;
@@ -80,9 +75,9 @@ const handler = createMcpHandler(() => {
     },
     async () => result({
       project: "Patrick Rick Social Agent",
-      phase: "drafts_only",
+      phase: "integrated_drafts",
       database: "Neon PostgreSQL",
-      databaseConfigured: Boolean(process.env.DATABASE_URL),
+      databaseConfigured: Boolean(databaseConnection()),
       canSchedule: false,
       canPublish: false,
       requiresHumanApproval: true,
@@ -134,6 +129,7 @@ const handler = createMcpHandler(() => {
       }),
     },
     async ({ artist, platform, title, era, caption, planned_at }) => {
+      if (!databaseCapability("PATRICK_SOCIAL_DRAFT_WRITES_ENABLED")) return fail("Social draft writes are disabled in this environment.");
       try {
         const sql = getNeon();
         const rows = await sql`
@@ -248,14 +244,6 @@ const handler = createMcpHandler(() => {
   // Snapshot rows represent observed album positions, not unique compositions.
   // This reviewed, explicit snapshot cannot silently switch to a newer upload.
   const reviewSnapshot = "d0286d0dc0cf03caf5289c872c94b60d1c6f7739364507011bd15f1cdc590915";
-  // These review tools are deliberately limited to the isolated Neon branch.
-  // Promotion to any other database requires an explicit reviewed change.
-  const isValidationBranch = async () => {
-    const sql = getNeon();
-    const rows = await sql`SELECT current_setting('neon.branch_id', true) AS branch_id,
-                                  current_setting('neon.project_id', true) AS project_id`;
-    return rows[0]?.branch_id === 'br-ancient-hill-b9o9k7e7' && rows[0]?.project_id === 'royal-tree-12332492';
-  };
   server.registerTool(
     "review_catalog_summary",
     {
@@ -265,7 +253,7 @@ const handler = createMcpHandler(() => {
     },
     async () => {
       try {
-        if (!await isValidationBranch()) return fail("Review tools are restricted to the isolated validation branch.");
+        if (!databaseCapability("PATRICK_CATALOG_REVIEW_ENABLED")) return fail("Catalog review is disabled in this environment.");
         const sql = getNeon();
         const rows = await sql`SELECT COUNT(*)::integer AS album_entries,
           COALESCE(SUM(jsonb_array_length(tracks)),0)::integer AS track_positions
@@ -286,7 +274,7 @@ const handler = createMcpHandler(() => {
     },
     async ({ query, limit }) => {
       try {
-        if (!await isValidationBranch()) return fail("Review tools are restricted to the isolated validation branch.");
+        if (!databaseCapability("PATRICK_CATALOG_REVIEW_ENABLED")) return fail("Catalog review is disabled in this environment.");
         const sql = getNeon();
         const snapshot = await sql`SELECT 1 FROM catalog.review_catalog_metadata WHERE snapshot_id=${reviewSnapshot}`;
         if (!snapshot.length) return fail("Review snapshot missing in this environment.");
@@ -310,7 +298,7 @@ const handler = createMcpHandler(() => {
     },
     async ({ album_id }) => {
       try {
-        if (!await isValidationBranch()) return fail("Review tools are restricted to the isolated validation branch.");
+        if (!databaseCapability("PATRICK_CATALOG_REVIEW_ENABLED")) return fail("Catalog review is disabled in this environment.");
         const sql = getNeon();
         const snapshot = await sql`SELECT 1 FROM catalog.review_catalog_metadata WHERE snapshot_id=${reviewSnapshot}`;
         if (!snapshot.length) return fail("Review snapshot missing in this environment.");
@@ -362,7 +350,11 @@ const oauthSecured = requireMcpAuth(auth, async (request, claims) => {
 
 export async function POST(request: Request) {
   try {
-    return process.env.PATRICK_MCP_AUTH_MODE === "oauth" ? await oauthSecured(request) : await secured(request);
+    if (process.env.PATRICK_MCP_AUTH_MODE === "oauth") return await oauthSecured(request);
+    if (!process.env.VERCEL && !process.env.VERCEL_ENV && process.env.PATRICK_MCP_AUTH_MODE === "static") {
+      return await secured(request);
+    }
+    return Response.json({ error: "OAuth is required" }, { status: 503 });
   } catch {
     return Response.json({ error: "Authentication service unavailable" }, { status: 503 });
   }

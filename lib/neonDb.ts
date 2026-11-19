@@ -1,8 +1,9 @@
 import { neon } from "@neondatabase/serverless";
+import { databaseConnection } from "./databaseEnvironment";
 
 // Credentials are read on the server only. No browser/client exports.
 export function getNeon() {
-  const databaseUrl = process.env.PATRICK_PREVIEW_DATABASE_URL || process.env.DATABASE_URL;
+  const databaseUrl = databaseConnection();
   if (!databaseUrl) {
     throw new Error("DATABASE_URL must be set in the server environment");
   }
