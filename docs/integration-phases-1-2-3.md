@@ -38,3 +38,12 @@ La rama Neon `br-flat-feather-b9ryk5wt` deriva de producción `br-cold-bird-b9xi
 | Neon, catálogo | 14 álbumes, 85 posiciones del catálogo y 0 publicaciones verificadas. El snapshot separado contiene 34 entradas y 543 posiciones. Las huellas del contenido y del manifiesto coincidieron con el origen. |
 | Neon, borradores | Inserción y lectura SQL de ambos tipos en estado DRAFT, restricción audiovisual de estado y rollback comprobados. Recuentos persistentes de la copia tras migrar, 1 social y 0 audiovisuales. |
 | Pendiente de aceptación | OAuth interactivo desde ChatGPT y lecturas/escrituras MCP con una base de Preview que use identidad y credenciales propias. |
+
+
+## Validación adicional, 21 de noviembre de 2026
+
+Preview aislado: proyecto Neon `snowy-heart-50323365`, rama `br-young-breeze-bhpg8ibv`, con identidad y credenciales propias. El código de integración validado para estas llamadas es `5760039a976b6a00dd233325ace424aa21f5bd0c`.
+
+Tras habilitar el protocolo MCP 2025 y completar la autorización OAuth del propietario, el usuario ejecutó desde Codex las herramientas del servidor integrado. `workspace_status` confirmó las capacidades y la aprobación humana. `catalog_summary` devolvió 14 álbumes y 85 posiciones documentadas. `prepare_video_brief` devolvió la ficha de Golden Dust sin guardar, generar, programar ni publicar. `create_content_draft` y `list_content_drafts` guardaron y leyeron el mismo borrador de prueba en estado DRAFT. Una consulta independiente a la base aislada confirmó un borrador social y cero audiovisuales.
+
+Pendientes: guardar y leer un borrador audiovisual mediante MCP, verificar los tres instrumentos de revisión del snapshot desde el mismo cliente, completar las pruebas negativas contra el Preview y validar la aplicación en ChatGPT. La prueba de OAuth en Codex no demuestra por sí sola la disponibilidad del complemento en ChatGPT. Excluir el borrador de prueba y todas las credenciales y sesiones del Preview de cualquier migración a producción.
