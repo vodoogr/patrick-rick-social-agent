@@ -54,3 +54,10 @@ Pendientes: guardar y leer un borrador audiovisual mediante MCP, verificar los t
 El 21 de noviembre de 2026, el usuario ejecutó desde Codex y con OAuth del propietario `review_catalog_summary`, `save_video_production_draft` y `list_video_production_drafts`. El resumen devolvió 34 fichas y 543 posiciones observadas. El borrador de prueba de Golden Dust quedó en estado DRAFT y se leyó con el mismo identificador. La respuesta confirmó que no se subieron archivos, generaron medios, programaron ni publicaron contenidos. Una consulta de solo lectura a Neon confirmó un borrador social y uno audiovisual de prueba en el Preview aislado. Ambos quedan fuera de producción.
 
 Quedan pendientes pruebas negativas contra el Preview, las consultas detalladas del catálogo de revisión y la ejecución de las herramientas a través del complemento de ChatGPT. Codex utiliza una conexión MCP configurada directamente y el resultado no demuestra que el complemento de ChatGPT haya cargado sus herramientas. El usuario inició sesión con una contraseña provisional. Hay que establecer una contraseña elegida por el propietario mediante un procedimiento seguro antes de usar la cuenta de forma continuada.
+
+
+### Comprobaciones adicionales de seguridad en Preview
+
+El 21 de noviembre de 2026, las llamadas MCP sin credenciales y con un token inválido devolvieron HTTP 401. El inicio de sesión con un correo ajeno al propietario devolvió HTTP 403. Las pruebas locales anteriores cubrieron tokens caducados, modificados y con emisor, audiencia o alcance incorrectos. Estas últimas condiciones siguen pendientes de una prueba contra el despliegue real.
+
+La versión privada 0.1.1 del complemento declara OAuth con CIMD, pero sus herramientas no estaban expuestas en la sesión de ChatGPT desde la que se intentó validarlo. La conexión MCP directa en Codex funcionó con OAuth y permitió las pruebas de catálogo y borradores. Mantener la validación del complemento en ChatGPT como pendiente hasta obtener llamadas reales desde él.
