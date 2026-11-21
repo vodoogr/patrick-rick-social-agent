@@ -21,6 +21,58 @@ function fail(message: string) {
 
 const handler = createMcpHandler(() => {
   const server = new McpServer({ name: "patrick-rick-social-agent", version: "0.1.0" });
+  server.registerTool("import_suno_clips", {
+    _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
+    description: "On explicit request, record completed songs returned by the connected Suno library in Preview. Pass every page of Suno results in batches. Existing Suno IDs are updated, and album and release associations remain unconfirmed.",
+    inputSchema: z.object({
+      clips: z.array(z.object({
+        id: z.string().uuid(),
+        title: z.string().trim().min(1).max(500),
+        created_at: z.string().datetime({ offset: true }).optional(),
+        visibility: z.enum(["public", "private"]).optional(),
+      })).min(1).max(100),
+    }),
+  }, async ({ clips }) => {
+    if (process.env.VERCEL_ENV !== "preview" || !databaseConnection()) {
+      return fail("Suno imports are available only in the configured Preview environment.");
+    }
+    if (new Set(clips.map((clip) => clip.id.toLowerCase())).size !== clips.length) {
+      return fail("Each Suno ID must occur only once per batch.");
+    }
+    try {
+      const sql = getNeon();
+      await sql`INSERT INTO catalog.sources (source_key, title, source_kind, notes)
+        VALUES ('suno-library-sync', 'Suno library synchronization', 'PROVIDER_VERIFIED',
+          'Entries supplied from the connected Suno library; album and publication status require separate evidence.')
+        ON CONFLICT (source_key) DO NOTHING`;
+      const rows = await sql`
+        INSERT INTO catalog.suno_clips (clip_id, title, suno_url, created_at_suno, visibility, source_key)
+        SELECT entry.id::uuid, entry.title, 'https://suno.com/song/' || entry.id,
+          entry.created_at::timestamptz, entry.visibility, 'suno-library-sync'
+        FROM jsonb_to_recordset(${JSON.stringify(clips)}::jsonb)
+          AS entry(id text, title text, created_at text, visibility text)
+        ON CONFLICT (clip_id) DO UPDATE SET title = EXCLUDED.title,
+          suno_url = EXCLUDED.suno_url, created_at_suno = COALESCE(EXCLUDED.created_at_suno, catalog.suno_clips.created_at_suno),
+          visibility = COALESCE(EXCLUDED.visibility, catalog.suno_clips.visibility), last_observed_at = now()
+        RETURNING clip_id`;
+      return result({ imported: rows.length, note: "Suno observations only. Album, song and release associations remain unconfirmed." });
+    } catch {
+      return fail("Could not import Suno observations. Check that the Preview catalog schema is available.");
+    }
+  });
+  server.registerTool("list_suno_clips", {
+    _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
+    description: "Search Suno library observations recorded in the Preview catalog. Observations do not confirm album membership or publication.",
+    inputSchema: z.object({ query: z.string().trim().max(200).optional(), limit: z.number().int().min(1).max(100).default(25) }),
+  }, async ({ query, limit }) => {
+    try {
+      const sql = getNeon();
+      const rows = await sql`SELECT clip_id, title, suno_url, created_at_suno, visibility, last_observed_at
+        FROM catalog.suno_clips WHERE position(lower(${query ?? ""}) in lower(title)) > 0
+        ORDER BY created_at_suno DESC NULLS LAST, clip_id LIMIT ${limit}`;
+      return result({ clips: rows, note: "Suno observations do not establish album membership or publication." });
+    } catch { return fail("Could not read Suno observations."); }
+  });
   server.registerTool("save_video_production_draft", {
     _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
     description: "On explicit request, save shot and asset references as a draft in the configured database. Does not upload files, generate, schedule or publish.",
