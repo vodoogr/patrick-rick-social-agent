@@ -311,7 +311,7 @@ const handler = createMcpHandler(() => {
   );
 
   return server;
-}, { legacy: "reject" });
+}, { legacy: "stateless" });
 
 function authorized(request: Request): boolean {
   const secret = process.env.AGENT_MCP_TOKEN;

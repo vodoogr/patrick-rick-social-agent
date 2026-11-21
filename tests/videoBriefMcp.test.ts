@@ -27,3 +27,25 @@ test("authenticated MCP call returns the video brief", async () => {
   assert.match(body, /Granada/);
 });
 
+
+
+test("2025 MCP clients can initialize and discover tools after authentication", async () => {
+  process.env.AGENT_MCP_TOKEN = "local-test-token-not-for-production-123456";
+  process.env.PATRICK_MCP_AUTH_MODE = "static";
+  const { POST } = await import("../app/api/mcp/route");
+  async function call(method: string, params: object) {
+    const request = new Request("http://localhost:3000/api/mcp", {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json, text/event-stream", authorization: `Bearer ${process.env.AGENT_MCP_TOKEN}` },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+    });
+    const response = await POST(request);
+    const body = await response.text();
+    assert.equal(response.status, 200, body);
+    return body;
+  }
+  const initialized = await call("initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "compatibility-test", version: "1" } });
+  assert.match(initialized, /protocolVersion/);
+  const tools = await call("tools/list", {});
+  assert.match(tools, /workspace_status/);
+});
