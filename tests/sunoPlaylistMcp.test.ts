@@ -25,6 +25,7 @@ test("playlist update is discoverable and fails closed outside Preview", async (
   const listing = await call("tools/list", {});
   assert.match(listing, /sync_suno_album_playlist/);
   assert.match(listing, /get_suno_album_playlist/);
+  assert.match(listing, /validate_campaign_draft/);
   const response = await call("tools/call", {
     name: "sync_suno_album_playlist",
     arguments: {
