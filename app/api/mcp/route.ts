@@ -143,6 +143,39 @@ const handler = createMcpHandler(() => {
         note: "Playlist membership does not establish release status." });
     } catch { return fail("Could not read the linked Suno playlist."); }
   });
+  server.registerTool("validate_campaign_draft", {
+    _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
+    annotations: { readOnlyHint: true, destructiveHint: false },
+    description: "Check a proposed campaign against the selected reviewed album playlist in Preview. Returns factual checks and missing brief fields for human review. Does not approve, schedule or publish.",
+    inputSchema: z.object({
+      album_id: z.string().regex(/^alb_[a-f0-9]{12}$/),
+      clip_id: z.string().uuid(),
+      platform: z.enum(["instagram", "tiktok", "youtube"]),
+      format: z.string().trim().max(160).optional(),
+      objective: z.string().trim().max(500).optional(),
+      copy: z.string().trim().max(4000).optional(),
+      asset: z.string().trim().max(1000).optional(),
+    }),
+  }, async ({ album_id, clip_id, platform, format, objective, copy, asset }) => {
+    try {
+      const sql = getNeon();
+      const rows = await sql`SELECT a.album->>'album' AS album, c.display_name AS playlist,
+          s.clip_id, s.title, s.suno_url, m.listed_position
+        FROM catalog.review_album_playlists l
+        JOIN catalog.review_album_snapshots a USING (snapshot_id,album_id)
+        JOIN catalog.suno_collections c ON c.collection_key=l.collection_key
+        JOIN catalog.suno_collection_clips m ON m.collection_key=c.collection_key
+        JOIN catalog.suno_clips s ON s.clip_id=m.clip_id
+        WHERE l.snapshot_id='d0286d0dc0cf03caf5289c872c94b60d1c6f7739364507011bd15f1cdc590915'
+          AND l.album_id=${album_id} AND s.clip_id=${clip_id}::uuid`;
+      if (!rows.length) return result({ status: "NEEDS_EVIDENCE", album_id, clip_id,
+        issues: ["The selected version was not found in the linked album playlist."], approved: false });
+      const missing = [!format && "format", !objective && "objective", !copy && "copy", !asset && "asset"].filter(Boolean);
+      return result({ status: missing.length ? "NEEDS_CHANGES" : "READY_FOR_HUMAN_REVIEW",
+        platform, album: rows[0], missing, approved: false, scheduled: false, published: false,
+        note: "Playlist membership does not establish publication status or rights. Human creative and factual review remains necessary." });
+    } catch { return fail("Could not validate the campaign against the Preview playlist."); }
+  });
   server.registerTool("list_suno_clips", {
     _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
     description: "Search Suno library observations recorded in the Preview catalog. Observations do not confirm album membership or publication.",
