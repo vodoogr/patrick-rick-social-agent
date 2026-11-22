@@ -60,6 +60,30 @@ const handler = createMcpHandler(() => {
       return fail("Could not import Suno observations. Check that the Preview catalog schema is available.");
     }
   });
+  server.registerTool("get_suno_album_playlist", {
+    _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
+    annotations: { readOnlyHint: true, destructiveHint: false },
+    description: "Get the Suno playlist and ordered song versions linked to a reviewed album. Find album_id with list_review_albums first. Playlist membership does not imply a verified release.",
+    inputSchema: z.object({ album_id: z.string().regex(/^alb_[a-f0-9]{12}$/) }),
+  }, async ({ album_id }) => {
+    try {
+      const sql = getNeon();
+      const rows = await sql`SELECT a.album->>'album' AS album, c.display_name AS playlist,
+        c.external_url AS playlist_url, m.listed_position, s.clip_id, s.title, s.suno_url
+        FROM catalog.review_album_playlists l
+        JOIN catalog.review_album_snapshots a USING (snapshot_id, album_id)
+        JOIN catalog.suno_collections c ON c.collection_key = l.collection_key
+        JOIN catalog.suno_collection_clips m ON m.collection_key = c.collection_key
+        JOIN catalog.suno_clips s ON s.clip_id = m.clip_id
+        WHERE l.snapshot_id = 'd0286d0dc0cf03caf5289c872c94b60d1c6f7739364507011bd15f1cdc590915'
+          AND l.album_id = ${album_id}
+        ORDER BY m.listed_position, s.clip_id`;
+      if (!rows.length) return fail("No Suno playlist is linked to this album in Preview.");
+      return result({ album: rows[0].album, playlist: rows[0].playlist, playlist_url: rows[0].playlist_url,
+        tracks: rows.map(({ listed_position, clip_id, title, suno_url }) => ({ listed_position, clip_id, title, suno_url })),
+        note: "Playlist membership does not establish release status." });
+    } catch { return fail("Could not read the linked Suno playlist."); }
+  });
   server.registerTool("list_suno_clips", {
     _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
     description: "Search Suno library observations recorded in the Preview catalog. Observations do not confirm album membership or publication.",
