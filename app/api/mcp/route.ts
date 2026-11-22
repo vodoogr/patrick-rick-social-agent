@@ -63,14 +63,14 @@ const handler = createMcpHandler(() => {
   server.registerTool("list_suno_clips", {
     _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
     description: "Search Suno library observations recorded in the Preview catalog. Observations do not confirm album membership or publication.",
-    inputSchema: z.object({ query: z.string().trim().max(200).optional(), limit: z.number().int().min(1).max(100).default(25) }),
-  }, async ({ query, limit }) => {
+    inputSchema: z.object({ query: z.string().trim().max(200).optional(), limit: z.number().int().min(1).max(100).default(25), offset: z.number().int().min(0).default(0) }),
+  }, async ({ query, limit, offset }) => {
     try {
       const sql = getNeon();
       const rows = await sql`SELECT clip_id, title, suno_url, created_at_suno, visibility, last_observed_at
         FROM catalog.suno_clips WHERE position(lower(${query ?? ""}) in lower(title)) > 0
-        ORDER BY created_at_suno DESC NULLS LAST, clip_id LIMIT ${limit}`;
-      return result({ clips: rows, note: "Suno observations do not establish album membership or publication." });
+        ORDER BY created_at_suno DESC NULLS LAST, clip_id LIMIT ${limit + 1} OFFSET ${offset}`;
+      return result({ clips: rows.slice(0, limit), next_offset: rows.length > limit ? offset + limit : null, note: "Suno observations do not establish album membership or publication." });
     } catch { return fail("Could not read Suno observations."); }
   });
   server.registerTool("save_video_production_draft", {
