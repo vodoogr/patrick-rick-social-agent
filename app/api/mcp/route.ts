@@ -3,6 +3,7 @@ import { requireMcpAuth } from "@better-auth/mcp";
 import { auth, MCP_RESOURCE, isOwnerEmail } from "@/lib/auth";
 import { z } from "zod";
 import { timingSafeEqual } from "node:crypto";
+import { Pool } from "pg";
 import { getNeon } from "@/lib/neonDb";
 import { databaseCapability, databaseConnection } from "@/lib/databaseEnvironment";
 import { createVideoBrief } from "@/services/videoBrief";
@@ -60,6 +61,64 @@ const handler = createMcpHandler(() => {
       return fail("Could not import Suno observations. Check that the Preview catalog schema is available.");
     }
   });
+  server.registerTool("sync_suno_album_playlist", {
+    _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
+    description: "On explicit request update one linked Preview album playlist. First call get_suno_album_playlist, then read every page from the Suno playlist. Supply its current clip_count, the complete ordered list and the returned sync_version. Never submit partial pages. Does not publish or schedule.",
+    inputSchema: z.object({
+      album_id: z.string().regex(/^alb_[a-f0-9]{12}$/),
+      playlist_id: z.string().uuid(),
+      sync_version: z.string().min(1).max(100),
+      expected_count: z.number().int().min(1).max(500),
+      clips: z.array(z.object({
+        id: z.string().uuid(), title: z.string().trim().min(1).max(500),
+        created_at: z.string().datetime({ offset: true }).optional(),
+        visibility: z.enum(["public", "private"]).optional(),
+      })).min(1).max(500),
+    }),
+  }, async ({ album_id, playlist_id, sync_version, expected_count, clips }) => {
+    const connection = databaseConnection();
+    if (process.env.VERCEL_ENV !== "preview" || !connection) return fail("Playlist updates require the configured Preview environment.");
+    if (clips.length !== expected_count || new Set(clips.map((clip) => clip.id.toLowerCase())).size !== clips.length) {
+      return fail("Playlist count does not match the complete unique Suno results. Read all pages before retrying.");
+    }
+    const pool = new Pool({ connectionString: connection, max: 1, connectionTimeoutMillis: 5000 });
+    try {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const current = await client.query(`SELECT c.collection_key FROM catalog.review_album_playlists l
+          JOIN catalog.suno_collections c ON c.collection_key = l.collection_key
+          WHERE l.snapshot_id = $1 AND l.album_id = $2 AND c.external_id = $3::uuid
+            AND c.observed_at = $4::timestamptz FOR UPDATE OF c`,
+          ["d0286d0dc0cf03caf5289c872c94b60d1c6f7739364507011bd15f1cdc590915", album_id, playlist_id, sync_version]);
+        if (!current.rowCount) {
+          await client.query("ROLLBACK");
+          return fail("Playlist mapping or version changed. Read the album playlist again before retrying.");
+        }
+        const collectionKey = current.rows[0].collection_key;
+        await client.query(`INSERT INTO catalog.sources (source_key,title,source_kind,notes)
+          VALUES ('suno-library-sync','Suno library synchronization','PROVIDER_VERIFIED',
+            'Suno observations; release status requires separate evidence.') ON CONFLICT (source_key) DO NOTHING`);
+        await client.query(`INSERT INTO catalog.suno_clips (clip_id,title,suno_url,created_at_suno,visibility,source_key)
+          SELECT x.id::uuid,x.title,'https://suno.com/song/' || x.id,x.created_at::timestamptz,x.visibility,'suno-library-sync'
+          FROM jsonb_to_recordset($1::jsonb) AS x(id text,title text,created_at text,visibility text)
+          ON CONFLICT (clip_id) DO UPDATE SET title=EXCLUDED.title,suno_url=EXCLUDED.suno_url,
+            created_at_suno=COALESCE(EXCLUDED.created_at_suno,catalog.suno_clips.created_at_suno),
+            visibility=COALESCE(EXCLUDED.visibility,catalog.suno_clips.visibility),last_observed_at=now()`, [JSON.stringify(clips)]);
+        await client.query("DELETE FROM catalog.suno_collection_clips WHERE collection_key=$1", [collectionKey]);
+        await client.query(`INSERT INTO catalog.suno_collection_clips (collection_key,clip_id,listed_position)
+          SELECT $1, x.id::uuid, x.position::integer FROM jsonb_to_recordset($2::jsonb) AS x(id text,position integer)`,
+          [collectionKey, JSON.stringify(clips.map((clip, index) => ({ id: clip.id, position: index + 1 })))]);
+        await client.query("UPDATE catalog.suno_collections SET observed_clip_count=$2, observed_at=clock_timestamp() WHERE collection_key=$1", [collectionKey, clips.length]);
+        await client.query("COMMIT");
+        return result({ album_id, playlist_id, count: clips.length, scheduled: false, published: false });
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally { client.release(); }
+    } catch { return fail("Could not update the Suno playlist in Preview."); }
+    finally { await pool.end(); }
+  });
   server.registerTool("get_suno_album_playlist", {
     _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
     annotations: { readOnlyHint: true, destructiveHint: false },
@@ -69,7 +128,7 @@ const handler = createMcpHandler(() => {
     try {
       const sql = getNeon();
       const rows = await sql`SELECT a.album->>'album' AS album, c.display_name AS playlist,
-        c.external_url AS playlist_url, m.listed_position, s.clip_id, s.title, s.suno_url
+        c.external_url AS playlist_url, c.external_id AS playlist_id, c.observed_at::text AS sync_version, m.listed_position, s.clip_id, s.title, s.suno_url
         FROM catalog.review_album_playlists l
         JOIN catalog.review_album_snapshots a USING (snapshot_id, album_id)
         JOIN catalog.suno_collections c ON c.collection_key = l.collection_key
@@ -79,7 +138,7 @@ const handler = createMcpHandler(() => {
           AND l.album_id = ${album_id}
         ORDER BY m.listed_position, s.clip_id`;
       if (!rows.length) return fail("No Suno playlist is linked to this album in Preview.");
-      return result({ album: rows[0].album, playlist: rows[0].playlist, playlist_url: rows[0].playlist_url,
+      return result({ album: rows[0].album, playlist: rows[0].playlist, playlist_url: rows[0].playlist_url, playlist_id: rows[0].playlist_id, sync_version: rows[0].sync_version,
         tracks: rows.map(({ listed_position, clip_id, title, suno_url }) => ({ listed_position, clip_id, title, suno_url })),
         note: "Playlist membership does not establish release status." });
     } catch { return fail("Could not read the linked Suno playlist."); }
