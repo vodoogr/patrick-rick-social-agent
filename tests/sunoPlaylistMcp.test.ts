@@ -39,3 +39,25 @@ test("playlist update is discoverable and fails closed outside Preview", async (
   assert.match(response, /configured Preview environment/);
   assert.match(response, /isError/);
 });
+
+test("social material writes are unavailable outside Preview", async () => {
+  const { POST } = await import("../app/api/mcp/route");
+  const payload = {
+    jsonrpc: "2.0", id: 1, method: "tools/call", params: {
+      name: "save_social_draft_material", arguments: {
+        draft_id: "00000000-0000-4000-8000-000000000001", kind: "audio",
+        label: "Fragmento", reference: "suno:example", state: "provided",
+      },
+    },
+  };
+  const response = await POST(new Request("http://localhost:3000/api/mcp", {
+    method: "POST", headers: {
+      "content-type": "application/json", accept: "application/json, text/event-stream",
+      authorization: `Bearer ${process.env.AGENT_MCP_TOKEN}`,
+    }, body: JSON.stringify(payload),
+  }));
+  const body = await response.text();
+  assert.equal(response.status, 200, body);
+  assert.match(body, /Saving social materials is unavailable/);
+  assert.match(body, /isError/);
+});
