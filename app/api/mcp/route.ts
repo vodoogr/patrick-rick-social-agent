@@ -8,6 +8,7 @@ import { getNeon } from "@/lib/neonDb";
 import { databaseCapability, databaseConnection } from "@/lib/databaseEnvironment";
 import { createVideoBrief } from "@/services/videoBrief";
 import { videoProductionSchema } from "@/services/videoProduction";
+import { socialMaterialSchema, summarizeMaterials } from "@/services/socialMaterials";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -188,6 +189,45 @@ const handler = createMcpHandler(() => {
         ORDER BY created_at_suno DESC NULLS LAST, clip_id LIMIT ${limit + 1} OFFSET ${offset}`;
       return result({ clips: rows.slice(0, limit), next_offset: rows.length > limit ? offset + limit : null, note: "Suno observations do not establish album membership or publication." });
     } catch { return fail("Could not read Suno observations."); }
+  });
+  server.registerTool("save_social_draft_material", {
+    _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
+    description: "On explicit user request, save or update a material reference for a DRAFT social post in Preview. The same draft, kind and label update the same entry. This records metadata and does not upload files, approve, schedule or publish.",
+    inputSchema: socialMaterialSchema,
+  }, async (material) => {
+    if (process.env.VERCEL_ENV !== "preview" || !databaseCapability("PATRICK_SOCIAL_DRAFT_WRITES_ENABLED")) {
+      return fail("Saving social materials is unavailable in this environment.");
+    }
+    try {
+      const sql = getNeon();
+      const rows = await sql`WITH draft AS (
+        SELECT id FROM public.content_drafts WHERE id=${material.draft_id}::uuid AND status='DRAFT' FOR UPDATE
+      )
+      INSERT INTO public.social_draft_materials (draft_id,kind,label,reference,state,start_seconds,end_seconds)
+      SELECT draft.id,${material.kind},${material.label},${material.reference},${material.state},
+        ${material.start_seconds ?? null},${material.end_seconds ?? null} FROM draft
+      ON CONFLICT (draft_id,kind,label) DO UPDATE SET reference=EXCLUDED.reference,state=EXCLUDED.state,
+        start_seconds=EXCLUDED.start_seconds,end_seconds=EXCLUDED.end_seconds,updated_at=now()
+      RETURNING id,draft_id,kind,label,reference,state,start_seconds,end_seconds,updated_at`;
+      if (!rows.length) return fail("The draft was not found or is no longer in DRAFT status.");
+      return result({ material: rows[0], uploaded: false, scheduled: false, published: false });
+    } catch { return fail("Could not save the social material reference."); }
+  });
+  server.registerTool("get_social_draft_materials", {
+    _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
+    annotations: { readOnlyHint: true, destructiveHint: false },
+    description: "Read a social draft and its recorded material references, including which reference types are supplied. References and rights are not verified.",
+    inputSchema: z.object({ draft_id: z.string().uuid() }),
+  }, async ({ draft_id }) => {
+    try {
+      const sql = getNeon();
+      const drafts = await sql`SELECT id,artist,platform,title,era,caption,status,created_at
+        FROM public.content_drafts WHERE id=${draft_id}::uuid`;
+      if (!drafts.length) return fail("Social draft not found.");
+      const materials = await sql`SELECT id,kind,label,reference,state,start_seconds,end_seconds,updated_at
+        FROM public.social_draft_materials WHERE draft_id=${draft_id}::uuid ORDER BY created_at,id`;
+      return result({ draft: drafts[0], materials, reference_status: summarizeMaterials(materials as Array<{ kind: string; state: string }>) });
+    } catch { return fail("Could not read the social draft materials."); }
   });
   server.registerTool("save_video_production_draft", {
     _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
