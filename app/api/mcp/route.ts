@@ -23,6 +23,41 @@ function fail(message: string) {
 
 const handler = createMcpHandler(() => {
   const server = new McpServer({ name: "patrick-rick-social-agent", version: "0.1.0" });
+  server.registerTool("list_social_review_queue", {
+    _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
+    description: "List social drafts with their latest creative review and material references. Read-only; review does not schedule, publish, or verify rights.",
+    inputSchema: z.object({ limit: z.number().int().min(1).max(100).default(50) }),
+  }, async ({ limit }) => {
+    if (process.env.VERCEL_ENV !== "preview" || !databaseConnection()) return fail("Review queue requires the configured Preview environment.");
+    try {
+      const sql = getNeon();
+      const rows = await sql`SELECT d.id,d.artist,d.platform,d.title,d.era,d.caption,d.status,d.created_at,
+        COALESCE(r.decision,'pending') AS review_decision,r.notes AS review_notes,r.created_at AS reviewed_at,
+        COALESCE(m.materials,'[]'::jsonb) AS materials
+        FROM public.content_drafts d
+        LEFT JOIN LATERAL (SELECT decision,notes,created_at FROM public.social_draft_reviews
+          WHERE draft_id=d.id ORDER BY created_at DESC,id DESC LIMIT 1) r ON true
+        LEFT JOIN LATERAL (SELECT jsonb_agg(jsonb_build_object('kind',kind,'label',label,'reference',reference,'state',state,'start_seconds',start_seconds,'end_seconds',end_seconds) ORDER BY created_at,id) AS materials
+          FROM public.social_draft_materials WHERE draft_id=d.id) m ON true
+        ORDER BY d.created_at DESC,d.id DESC LIMIT ${limit}`;
+      return result({ drafts: rows, note: "Creative review is separate from publishing and does not verify material access, rights or audio versions." });
+    } catch { return fail("Could not read the review queue. Check Preview migrations and database access."); }
+  });
+  server.registerTool("record_social_review", {
+    _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
+    description: "Only on an explicit human decision, record a creative review of a DRAFT in Preview. Does not change draft status, verify rights, schedule or publish.",
+    inputSchema: z.object({ draft_id: z.string().uuid(), decision: z.enum(["pending", "approved", "changes_requested"]), notes: z.string().trim().max(2000).default("") }),
+  }, async ({ draft_id, decision, notes }) => {
+    if (process.env.VERCEL_ENV !== "preview" || !databaseCapability("PATRICK_SOCIAL_DRAFT_WRITES_ENABLED")) return fail("Review writes require the configured Preview environment.");
+    try {
+      const sql = getNeon();
+      const rows = await sql`INSERT INTO public.social_draft_reviews (draft_id,decision,notes)
+        SELECT id,${decision},${notes} FROM public.content_drafts WHERE id=${draft_id}::uuid AND status='DRAFT'
+        RETURNING id,draft_id,decision,notes,created_at`;
+      if (!rows.length) return fail("Draft not found or no longer in DRAFT status.");
+      return result({ review: rows[0], scheduled: false, published: false });
+    } catch { return fail("Could not record the review. Check the Preview migration and database access."); }
+  });
   server.registerTool("import_suno_clips", {
     _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
     description: "On explicit request, record completed songs returned by the connected Suno library in Preview. Pass every page of Suno results in batches. Existing Suno IDs are updated, and album and release associations remain unconfirmed.",
