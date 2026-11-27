@@ -9,6 +9,7 @@ import { databaseCapability, databaseConnection } from "@/lib/databaseEnvironmen
 import { createVideoBrief } from "@/services/videoBrief";
 import { videoProductionSchema } from "@/services/videoProduction";
 import { socialMaterialSchema, summarizeMaterials } from "@/services/socialMaterials";
+import { reconcileMetricool } from "@/services/metricoolReconciliation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,6 +24,30 @@ function fail(message: string) {
 
 const handler = createMcpHandler(() => {
   const server = new McpServer({ name: "patrick-rick-social-agent", version: "0.1.0" });
+  server.registerTool("reconcile_metricool_calendar", {
+    _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
+    description: "Compare explicit draft-to-post mappings with recent observations supplied by Metricool. Read-only: does not contact Metricool, persist, schedule, publish, or independently verify observations. Refresh Metricool first; PENDING is not published.",
+    inputSchema: z.object({
+      proposal_id: z.string().uuid(),
+      metricool_brand_id: z.string().regex(/^\d+$/),
+      observations: z.array(z.object({
+        draft_id: z.string().uuid(), metricool_post_id: z.string().regex(/^\d+$/), metricool_brand_id: z.string().regex(/^\d+$/),
+        platform: z.enum(["instagram", "tiktok"]), publication_date: z.string().datetime({ offset: true }),
+        status: z.enum(["PENDING", "PUBLISHING", "PUBLISHED", "ERROR", "AWAITING_CONFIRMATION"]),
+        auto_publish: z.boolean(), has_media: z.boolean(),
+      })).min(1).max(100),
+    }),
+  }, async ({ proposal_id, metricool_brand_id, observations }) => {
+    if (process.env.VERCEL_ENV !== "preview" || !databaseConnection()) return fail("Calendar reconciliation requires the configured Preview environment.");
+    try {
+      const sql = getNeon();
+      const drafts = await sql`SELECT d.id::text,d.platform,d.title FROM public.social_calendar_proposal_items i JOIN public.content_drafts d ON d.id=i.draft_id WHERE i.proposal_id=${proposal_id}::uuid`;
+      try {
+        const items = reconcileMetricool(drafts as Array<{id:string; platform:string; title:string}>, observations, metricool_brand_id);
+        return result({ proposal_id, metricool_brand_id, observations: items, observed_at: new Date().toISOString(), note: "Caller-supplied Metricool observations; not independently verified or saved. Refresh Metricool for current status. DRAFT is editorial and PENDING is not published." });
+      } catch (error) { return fail(error instanceof Error ? error.message : "Invalid reconciliation input."); }
+    } catch { return fail("Could not read calendar proposal. Check Preview database access and migrations."); }
+  });
   server.registerTool("save_social_calendar_proposal", {
     _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
     description: "On explicit request, save an editorial calendar proposal for existing DRAFT posts in Preview. Dates are suggestions only; never schedules or publishes. Each call creates a new proposal.",
