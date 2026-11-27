@@ -28,6 +28,8 @@ test("playlist update is discoverable and fails closed outside Preview", async (
   assert.match(listing, /validate_campaign_draft/);
   assert.match(listing, /list_social_review_queue/);
   assert.match(listing, /record_social_review/);
+  assert.match(listing, /save_social_calendar_proposal/);
+  assert.match(listing, /list_social_calendar_proposals/);
   const response = await call("tools/call", {
     name: "sync_suno_album_playlist",
     arguments: {
@@ -40,6 +42,22 @@ test("playlist update is discoverable and fails closed outside Preview", async (
   });
   assert.match(response, /configured Preview environment/);
   assert.match(response, /isError/);
+});
+
+test("calendar proposals fail closed outside Preview", async () => {
+  const { POST } = await import("../app/api/mcp/route");
+  for (const [name,args] of [
+    ["list_social_calendar_proposals", {}],
+    ["save_social_calendar_proposal", {title:"Test",items:[{draft_id:"00000000-0000-4000-8000-000000000001",suggested_date:"2026-12-01"}]}],
+  ] as const) {
+    const response = await POST(new Request("http://localhost:3000/api/mcp", {
+      method:"POST", headers:{"content-type":"application/json",accept:"application/json, text/event-stream",authorization:`Bearer ${process.env.AGENT_MCP_TOKEN}`},
+      body:JSON.stringify({jsonrpc:"2.0",id:1,method:"tools/call",params:{name,arguments:args}}),
+    }));
+    const body=await response.text();
+    assert.match(body,/Preview environment/);
+    assert.match(body,/isError/);
+  }
 });
 
 test("creative reviews fail closed outside Preview", async () => {

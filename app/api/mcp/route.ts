@@ -23,6 +23,41 @@ function fail(message: string) {
 
 const handler = createMcpHandler(() => {
   const server = new McpServer({ name: "patrick-rick-social-agent", version: "0.1.0" });
+  server.registerTool("save_social_calendar_proposal", {
+    _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
+    description: "On explicit request, save an editorial calendar proposal for existing DRAFT posts in Preview. Dates are suggestions only; never schedules or publishes. Each call creates a new proposal.",
+    inputSchema: z.object({ title: z.string().trim().min(1).max(200), items: z.array(z.object({ draft_id: z.string().uuid(), suggested_date: z.iso.date() })).min(1).max(100) }),
+  }, async ({ title, items }) => {
+    if (process.env.VERCEL_ENV !== "preview" || !databaseCapability("PATRICK_SOCIAL_DRAFT_WRITES_ENABLED")) return fail("Calendar proposal writes require the configured Preview environment.");
+    if (new Set(items.map(x => x.draft_id.toLowerCase())).size !== items.length) return fail("Each draft can appear only once in a proposal.");
+    const pool = new Pool({ connectionString: databaseConnection(), max: 1, connectionTimeoutMillis: 5000 });
+    try {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const valid = await client.query("SELECT id FROM public.content_drafts WHERE id = ANY($1::uuid[]) AND status='DRAFT' FOR SHARE", [items.map(x => x.draft_id)]);
+        if (valid.rowCount !== items.length) { await client.query("ROLLBACK"); return fail("One or more drafts do not exist or are not DRAFT. No proposal was saved."); }
+        const p = await client.query("INSERT INTO public.social_calendar_proposals(title) VALUES ($1) RETURNING id,title,created_at", [title]);
+        await client.query(`INSERT INTO public.social_calendar_proposal_items(proposal_id,draft_id,suggested_date,position)
+          SELECT $1::uuid,x.draft_id::uuid,x.suggested_date::date,x.position FROM jsonb_to_recordset($2::jsonb) AS x(draft_id text,suggested_date text,position integer)`,
+          [p.rows[0].id, JSON.stringify(items.map((x,i) => ({...x, position:i+1})))]);
+        await client.query("COMMIT");
+        return result({proposal:p.rows[0],items,schedule_created:false,published:false});
+      } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
+    } catch { return fail("Could not save calendar proposal. Check the Preview database and migrations."); } finally { await pool.end(); }
+  });
+  server.registerTool("list_social_calendar_proposals", {
+    _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
+    description: "List recent editorial calendar proposals and suggested dates in Preview. Suggestions are not scheduled posts.",
+    inputSchema: z.object({limit:z.number().int().min(1).max(50).default(10)}),
+  }, async ({limit}) => {
+    if (process.env.VERCEL_ENV !== "preview" || !databaseConnection()) return fail("Calendar proposals require the configured Preview environment.");
+    try {
+      const sql=getNeon();
+      const rows=await sql`SELECT p.id,p.title,p.created_at,COALESCE(jsonb_agg(jsonb_build_object('draft_id',d.id,'title',d.title,'platform',d.platform,'suggested_date',i.suggested_date,'position',i.position,'draft_status',d.status) ORDER BY i.position) FILTER (WHERE d.id IS NOT NULL),'[]'::jsonb) AS items FROM public.social_calendar_proposals p LEFT JOIN public.social_calendar_proposal_items i ON i.proposal_id=p.id LEFT JOIN public.content_drafts d ON d.id=i.draft_id GROUP BY p.id ORDER BY p.created_at DESC,p.id DESC LIMIT ${limit}`;
+      return result({proposals:rows,note:"Dates are editorial suggestions only; no scheduling or publishing has occurred."});
+    } catch { return fail("Could not list calendar proposals. Check the Preview database and migrations."); }
+  });
   server.registerTool("list_social_review_queue", {
     _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
     description: "List social drafts with their latest creative review and material references. Read-only; review does not schedule, publish, or verify rights.",
