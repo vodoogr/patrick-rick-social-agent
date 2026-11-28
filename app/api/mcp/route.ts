@@ -24,6 +24,48 @@ function fail(message: string) {
 
 const handler = createMcpHandler(() => {
   const server = new McpServer({ name: "patrick-rick-social-agent", version: "0.1.0" });
+  server.registerTool("save_metricool_observations", {
+    _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
+    description: "On user request save recent caller-supplied Metricool observations for existing proposal drafts in Preview. Does not contact Metricool, schedule, publish, or verify observations. Refresh Metricool before every update.",
+    inputSchema: z.object({ proposal_id: z.string().uuid(), metricool_brand_id: z.string().regex(/^\d+$/), observations: z.array(z.object({
+      draft_id: z.string().uuid(), metricool_post_id: z.string().regex(/^\d+$/), metricool_uuid: z.string().regex(/^-?\d+$/),
+      metricool_brand_id: z.string().regex(/^\d+$/), platform: z.enum(["instagram", "tiktok"]),
+      publication_date: z.string().datetime({ offset: true }), status: z.enum(["PENDING", "PUBLISHING", "PUBLISHED", "ERROR", "AWAITING_CONFIRMATION"]),
+      auto_publish: z.boolean(), has_media: z.boolean(),
+    })).min(1).max(100) }),
+  }, async ({ proposal_id, metricool_brand_id, observations }) => {
+    if (process.env.VERCEL_ENV !== "preview" || !databaseCapability("PATRICK_SOCIAL_DRAFT_WRITES_ENABLED")) return fail("Observation writes require the configured Preview environment.");
+    if (new Set(observations.map(x => x.metricool_uuid)).size !== observations.length) return fail("Each Metricool UUID may occur only once.");
+    const pool = new Pool({ connectionString: databaseConnection(), max: 1, connectionTimeoutMillis: 5000 });
+    try {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const drafts = await client.query(`SELECT d.id::text,d.platform,d.title FROM public.social_calendar_proposal_items i JOIN public.content_drafts d ON d.id=i.draft_id WHERE i.proposal_id=$1::uuid FOR SHARE OF d`, [proposal_id]);
+        reconcileMetricool(drafts.rows, observations, metricool_brand_id);
+        for (const item of observations) {
+          const saved = await client.query(`INSERT INTO public.metricool_observations(draft_id,proposal_id,metricool_brand_id,metricool_uuid,metricool_post_id,platform,publication_date,status,auto_publish,has_media)
+            VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6,$7::timestamptz,$8,$9,$10)
+            ON CONFLICT (draft_id) DO UPDATE SET proposal_id=EXCLUDED.proposal_id,metricool_post_id=EXCLUDED.metricool_post_id,publication_date=EXCLUDED.publication_date,status=EXCLUDED.status,auto_publish=EXCLUDED.auto_publish,has_media=EXCLUDED.has_media,observed_at=now()
+            WHERE metricool_observations.metricool_brand_id=EXCLUDED.metricool_brand_id AND metricool_observations.metricool_uuid=EXCLUDED.metricool_uuid AND metricool_observations.platform=EXCLUDED.platform RETURNING draft_id`,
+            [item.draft_id,proposal_id,item.metricool_brand_id,item.metricool_uuid,item.metricool_post_id,item.platform,item.publication_date,item.status,item.auto_publish,item.has_media]);
+          if (saved.rowCount !== 1) throw new Error("Existing mapping conflicts; no observations saved.");
+        }
+        await client.query("COMMIT");
+        return result({ saved: observations.length, note: "Caller-supplied observations saved; refresh Metricool to confirm current state. No publication or scheduling performed." });
+      } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
+    } catch { return fail("Could not save observations; verify the proposal, brand, unique mappings and Preview migration. No changes were saved."); } finally { await pool.end(); }
+  });
+  server.registerTool("list_metricool_observations", {
+    _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
+    description: "Read saved Metricool observations for a Preview proposal. Observations are caller-supplied, may be stale, and do not confirm publication.",
+    inputSchema: z.object({ proposal_id: z.string().uuid() }),
+  }, async ({ proposal_id }) => {
+    if (process.env.VERCEL_ENV !== "preview" || !databaseConnection()) return fail("Observations require the configured Preview environment.");
+    try { const sql=getNeon(); const rows=await sql`SELECT o.*,d.title FROM public.metricool_observations o JOIN public.content_drafts d ON d.id=o.draft_id WHERE o.proposal_id=${proposal_id}::uuid ORDER BY o.publication_date,o.draft_id`;
+      return result({observations:rows,note:"Caller-supplied historical observations; refresh Metricool before relying on current status."});
+    } catch { return fail("Could not read observations. Check the Preview migration and database access."); }
+  });
   server.registerTool("reconcile_metricool_calendar", {
     _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
     description: "Compare explicit draft-to-post mappings with recent observations supplied by Metricool. Read-only: does not contact Metricool, persist, schedule, publish, or independently verify observations. Refresh Metricool first; PENDING is not published.",

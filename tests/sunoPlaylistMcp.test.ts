@@ -30,6 +30,9 @@ test("playlist update is discoverable and fails closed outside Preview", async (
   assert.match(listing, /record_social_review/);
   assert.match(listing, /save_social_calendar_proposal/);
   assert.match(listing, /list_social_calendar_proposals/);
+  assert.match(listing, /reconcile_metricool_calendar/);
+  assert.match(listing, /save_metricool_observations/);
+  assert.match(listing, /list_metricool_observations/);
   const response = await call("tools/call", {
     name: "sync_suno_album_playlist",
     arguments: {
