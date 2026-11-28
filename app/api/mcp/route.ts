@@ -3,10 +3,14 @@ import { requireMcpAuth } from "@better-auth/mcp";
 import { auth, MCP_RESOURCE, isOwnerEmail } from "@/lib/auth";
 import { z } from "zod";
 import { timingSafeEqual } from "node:crypto";
+import { Pool } from "pg";
 import { getNeon } from "@/lib/neonDb";
 import { databaseCapability, databaseConnection } from "@/lib/databaseEnvironment";
 import { createVideoBrief } from "@/services/videoBrief";
 import { videoProductionSchema } from "@/services/videoProduction";
+import { socialMaterialSchema, summarizeMaterials } from "@/services/socialMaterials";
+import { reconcileMetricool } from "@/services/metricoolReconciliation";
+import { assessPublication } from "@/services/publicationEvidence";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,6 +25,366 @@ function fail(message: string) {
 
 const handler = createMcpHandler(() => {
   const server = new McpServer({ name: "patrick-rick-social-agent", version: "0.1.0" });
+  server.registerTool("assess_metricool_publication_evidence", {
+    _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
+    description: "Read-only comparison of one saved draft with caller-supplied recent Metricool scheduled and published results. Never confirms publication or failure: matching posts are candidates requiring identity verification. Does not contact Metricool or save changes.",
+    inputSchema: z.object({
+      draft_id: z.string().uuid(), song: z.string().trim().min(1).max(200), still_scheduled: z.boolean(),
+      published_candidates: z.array(z.object({ platform: z.enum(["instagram", "tiktok"]), published_at: z.string().datetime({offset:true}), url: z.string().url().max(2048), caption: z.string().max(10000) })).max(100),
+    }),
+  }, async ({ draft_id, song, still_scheduled, published_candidates }) => {
+    if (process.env.VERCEL_ENV !== "preview" || !databaseConnection()) return fail("Publication evidence requires the configured Preview environment.");
+    try {
+      const sql=getNeon();
+      const rows=await sql`SELECT draft_id,platform,publication_date,metricool_brand_id,metricool_uuid,observed_at FROM public.metricool_observations WHERE draft_id=${draft_id}::uuid`;
+      if (!rows.length) return fail("No saved Metricool observation for this draft.");
+      const row=rows[0];
+      const assessment=assessPublication({platform:row.platform as "instagram"|"tiktok",scheduled_at:new Date(row.publication_date as string).toISOString(),song,still_scheduled,observed_at:new Date().toISOString(),published_candidates});
+      return result({draft_id,metricool_brand_id:row.metricool_brand_id,metricool_uuid:row.metricool_uuid,stored_observed_at:row.observed_at,assessment,note:"Evidence and schedule presence supplied by caller; verify Metricool brand, UUID and data freshness. No status was saved or confirmed."});
+    } catch { return fail("Could not assess publication evidence. Check Preview database and supplied data."); }
+  });
+  server.registerTool("save_metricool_observations", {
+    _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
+    description: "On user request save recent caller-supplied Metricool observations for existing proposal drafts in Preview. Does not contact Metricool, schedule, publish, or verify observations. Refresh Metricool before every update.",
+    inputSchema: z.object({ proposal_id: z.string().uuid(), metricool_brand_id: z.string().regex(/^\d+$/), observations: z.array(z.object({
+      draft_id: z.string().uuid(), metricool_post_id: z.string().regex(/^\d+$/), metricool_uuid: z.string().regex(/^-?\d+$/),
+      metricool_brand_id: z.string().regex(/^\d+$/), platform: z.enum(["instagram", "tiktok"]),
+      publication_date: z.string().datetime({ offset: true }), status: z.enum(["PENDING", "PUBLISHING", "PUBLISHED", "ERROR", "AWAITING_CONFIRMATION"]),
+      auto_publish: z.boolean(), has_media: z.boolean(),
+    })).min(1).max(100) }),
+  }, async ({ proposal_id, metricool_brand_id, observations }) => {
+    if (process.env.VERCEL_ENV !== "preview" || !databaseCapability("PATRICK_SOCIAL_DRAFT_WRITES_ENABLED")) return fail("Observation writes require the configured Preview environment.");
+    if (new Set(observations.map(x => x.metricool_uuid)).size !== observations.length) return fail("Each Metricool UUID may occur only once.");
+    const pool = new Pool({ connectionString: databaseConnection(), max: 1, connectionTimeoutMillis: 5000 });
+    try {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const drafts = await client.query(`SELECT d.id::text,d.platform,d.title FROM public.social_calendar_proposal_items i JOIN public.content_drafts d ON d.id=i.draft_id WHERE i.proposal_id=$1::uuid FOR SHARE OF d`, [proposal_id]);
+        reconcileMetricool(drafts.rows, observations, metricool_brand_id);
+        for (const item of observations) {
+          const saved = await client.query(`INSERT INTO public.metricool_observations(draft_id,proposal_id,metricool_brand_id,metricool_uuid,metricool_post_id,platform,publication_date,status,auto_publish,has_media)
+            VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6,$7::timestamptz,$8,$9,$10)
+            ON CONFLICT (draft_id) DO UPDATE SET proposal_id=EXCLUDED.proposal_id,metricool_post_id=EXCLUDED.metricool_post_id,publication_date=EXCLUDED.publication_date,status=EXCLUDED.status,auto_publish=EXCLUDED.auto_publish,has_media=EXCLUDED.has_media,observed_at=now()
+            WHERE metricool_observations.metricool_brand_id=EXCLUDED.metricool_brand_id AND metricool_observations.metricool_uuid=EXCLUDED.metricool_uuid AND metricool_observations.platform=EXCLUDED.platform RETURNING draft_id`,
+            [item.draft_id,proposal_id,item.metricool_brand_id,item.metricool_uuid,item.metricool_post_id,item.platform,item.publication_date,item.status,item.auto_publish,item.has_media]);
+          if (saved.rowCount !== 1) throw new Error("Existing mapping conflicts; no observations saved.");
+        }
+        await client.query("COMMIT");
+        return result({ saved: observations.length, note: "Caller-supplied observations saved; refresh Metricool to confirm current state. No publication or scheduling performed." });
+      } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
+    } catch { return fail("Could not save observations; verify the proposal, brand, unique mappings and Preview migration. No changes were saved."); } finally { await pool.end(); }
+  });
+  server.registerTool("list_metricool_observations", {
+    _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
+    description: "Read saved Metricool observations for a Preview proposal. Observations are caller-supplied, may be stale, and do not confirm publication.",
+    inputSchema: z.object({ proposal_id: z.string().uuid() }),
+  }, async ({ proposal_id }) => {
+    if (process.env.VERCEL_ENV !== "preview" || !databaseConnection()) return fail("Observations require the configured Preview environment.");
+    try { const sql=getNeon(); const rows=await sql`SELECT o.*,d.title FROM public.metricool_observations o JOIN public.content_drafts d ON d.id=o.draft_id WHERE o.proposal_id=${proposal_id}::uuid ORDER BY o.publication_date,o.draft_id`;
+      return result({observations:rows,note:"Caller-supplied historical observations; refresh Metricool before relying on current status."});
+    } catch { return fail("Could not read observations. Check the Preview migration and database access."); }
+  });
+  server.registerTool("reconcile_metricool_calendar", {
+    _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
+    description: "Compare explicit draft-to-post mappings with recent observations supplied by Metricool. Read-only: does not contact Metricool, persist, schedule, publish, or independently verify observations. Refresh Metricool first; PENDING is not published.",
+    inputSchema: z.object({
+      proposal_id: z.string().uuid(),
+      metricool_brand_id: z.string().regex(/^\d+$/),
+      observations: z.array(z.object({
+        draft_id: z.string().uuid(), metricool_post_id: z.string().regex(/^\d+$/), metricool_brand_id: z.string().regex(/^\d+$/),
+        platform: z.enum(["instagram", "tiktok"]), publication_date: z.string().datetime({ offset: true }),
+        status: z.enum(["PENDING", "PUBLISHING", "PUBLISHED", "ERROR", "AWAITING_CONFIRMATION"]),
+        auto_publish: z.boolean(), has_media: z.boolean(),
+      })).min(1).max(100),
+    }),
+  }, async ({ proposal_id, metricool_brand_id, observations }) => {
+    if (process.env.VERCEL_ENV !== "preview" || !databaseConnection()) return fail("Calendar reconciliation requires the configured Preview environment.");
+    try {
+      const sql = getNeon();
+      const drafts = await sql`SELECT d.id::text,d.platform,d.title FROM public.social_calendar_proposal_items i JOIN public.content_drafts d ON d.id=i.draft_id WHERE i.proposal_id=${proposal_id}::uuid`;
+      try {
+        const items = reconcileMetricool(drafts as Array<{id:string; platform:string; title:string}>, observations, metricool_brand_id);
+        return result({ proposal_id, metricool_brand_id, observations: items, observed_at: new Date().toISOString(), note: "Caller-supplied Metricool observations; not independently verified or saved. Refresh Metricool for current status. DRAFT is editorial and PENDING is not published." });
+      } catch (error) { return fail(error instanceof Error ? error.message : "Invalid reconciliation input."); }
+    } catch { return fail("Could not read calendar proposal. Check Preview database access and migrations."); }
+  });
+  server.registerTool("save_social_calendar_proposal", {
+    _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
+    description: "On explicit request, save an editorial calendar proposal for existing DRAFT posts in Preview. Dates are suggestions only; never schedules or publishes. Each call creates a new proposal.",
+    inputSchema: z.object({ title: z.string().trim().min(1).max(200), items: z.array(z.object({ draft_id: z.string().uuid(), suggested_date: z.iso.date() })).min(1).max(100) }),
+  }, async ({ title, items }) => {
+    if (process.env.VERCEL_ENV !== "preview" || !databaseCapability("PATRICK_SOCIAL_DRAFT_WRITES_ENABLED")) return fail("Calendar proposal writes require the configured Preview environment.");
+    if (new Set(items.map(x => x.draft_id.toLowerCase())).size !== items.length) return fail("Each draft can appear only once in a proposal.");
+    const pool = new Pool({ connectionString: databaseConnection(), max: 1, connectionTimeoutMillis: 5000 });
+    try {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const valid = await client.query("SELECT id FROM public.content_drafts WHERE id = ANY($1::uuid[]) AND status='DRAFT' FOR SHARE", [items.map(x => x.draft_id)]);
+        if (valid.rowCount !== items.length) { await client.query("ROLLBACK"); return fail("One or more drafts do not exist or are not DRAFT. No proposal was saved."); }
+        const p = await client.query("INSERT INTO public.social_calendar_proposals(title) VALUES ($1) RETURNING id,title,created_at", [title]);
+        await client.query(`INSERT INTO public.social_calendar_proposal_items(proposal_id,draft_id,suggested_date,position)
+          SELECT $1::uuid,x.draft_id::uuid,x.suggested_date::date,x.position FROM jsonb_to_recordset($2::jsonb) AS x(draft_id text,suggested_date text,position integer)`,
+          [p.rows[0].id, JSON.stringify(items.map((x,i) => ({...x, position:i+1})))]);
+        await client.query("COMMIT");
+        return result({proposal:p.rows[0],items,schedule_created:false,published:false});
+      } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
+    } catch { return fail("Could not save calendar proposal. Check the Preview database and migrations."); } finally { await pool.end(); }
+  });
+  server.registerTool("list_social_calendar_proposals", {
+    _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
+    description: "List recent editorial calendar proposals and suggested dates in Preview. Suggestions are not scheduled posts.",
+    inputSchema: z.object({limit:z.number().int().min(1).max(50).default(10)}),
+  }, async ({limit}) => {
+    if (process.env.VERCEL_ENV !== "preview" || !databaseConnection()) return fail("Calendar proposals require the configured Preview environment.");
+    try {
+      const sql=getNeon();
+      const rows=await sql`SELECT p.id,p.title,p.created_at,COALESCE(jsonb_agg(jsonb_build_object('draft_id',d.id,'title',d.title,'platform',d.platform,'suggested_date',i.suggested_date,'position',i.position,'draft_status',d.status) ORDER BY i.position) FILTER (WHERE d.id IS NOT NULL),'[]'::jsonb) AS items FROM public.social_calendar_proposals p LEFT JOIN public.social_calendar_proposal_items i ON i.proposal_id=p.id LEFT JOIN public.content_drafts d ON d.id=i.draft_id GROUP BY p.id ORDER BY p.created_at DESC,p.id DESC LIMIT ${limit}`;
+      return result({proposals:rows,note:"Dates are editorial suggestions only; no scheduling or publishing has occurred."});
+    } catch { return fail("Could not list calendar proposals. Check the Preview database and migrations."); }
+  });
+  server.registerTool("list_social_review_queue", {
+    _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
+    description: "List social drafts with their latest creative review and material references. Read-only; review does not schedule, publish, or verify rights.",
+    inputSchema: z.object({ limit: z.number().int().min(1).max(100).default(50) }),
+  }, async ({ limit }) => {
+    if (process.env.VERCEL_ENV !== "preview" || !databaseConnection()) return fail("Review queue requires the configured Preview environment.");
+    try {
+      const sql = getNeon();
+      const rows = await sql`SELECT d.id,d.artist,d.platform,d.title,d.era,d.caption,d.status,d.created_at,
+        COALESCE(r.decision,'pending') AS review_decision,r.notes AS review_notes,r.created_at AS reviewed_at,
+        COALESCE(m.materials,'[]'::jsonb) AS materials
+        FROM public.content_drafts d
+        LEFT JOIN LATERAL (SELECT decision,notes,created_at FROM public.social_draft_reviews
+          WHERE draft_id=d.id ORDER BY created_at DESC,id DESC LIMIT 1) r ON true
+        LEFT JOIN LATERAL (SELECT jsonb_agg(jsonb_build_object('kind',kind,'label',label,'reference',reference,'state',state,'start_seconds',start_seconds,'end_seconds',end_seconds) ORDER BY created_at,id) AS materials
+          FROM public.social_draft_materials WHERE draft_id=d.id) m ON true
+        ORDER BY d.created_at DESC,d.id DESC LIMIT ${limit}`;
+      return result({ drafts: rows, note: "Creative review is separate from publishing and does not verify material access, rights or audio versions." });
+    } catch { return fail("Could not read the review queue. Check Preview migrations and database access."); }
+  });
+  server.registerTool("record_social_review", {
+    _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
+    description: "Only on an explicit human decision, record a creative review of a DRAFT in Preview. Does not change draft status, verify rights, schedule or publish.",
+    inputSchema: z.object({ draft_id: z.string().uuid(), decision: z.enum(["pending", "approved", "changes_requested"]), notes: z.string().trim().max(2000).default("") }),
+  }, async ({ draft_id, decision, notes }) => {
+    if (process.env.VERCEL_ENV !== "preview" || !databaseCapability("PATRICK_SOCIAL_DRAFT_WRITES_ENABLED")) return fail("Review writes require the configured Preview environment.");
+    try {
+      const sql = getNeon();
+      const rows = await sql`INSERT INTO public.social_draft_reviews (draft_id,decision,notes)
+        SELECT id,${decision},${notes} FROM public.content_drafts WHERE id=${draft_id}::uuid AND status='DRAFT'
+        RETURNING id,draft_id,decision,notes,created_at`;
+      if (!rows.length) return fail("Draft not found or no longer in DRAFT status.");
+      return result({ review: rows[0], scheduled: false, published: false });
+    } catch { return fail("Could not record the review. Check the Preview migration and database access."); }
+  });
+  server.registerTool("import_suno_clips", {
+    _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
+    description: "On explicit request, record completed songs returned by the connected Suno library in Preview. Pass every page of Suno results in batches. Existing Suno IDs are updated, and album and release associations remain unconfirmed.",
+    inputSchema: z.object({
+      clips: z.array(z.object({
+        id: z.string().uuid(),
+        title: z.string().trim().min(1).max(500),
+        created_at: z.string().datetime({ offset: true }).optional(),
+        visibility: z.enum(["public", "private"]).optional(),
+      })).min(1).max(100),
+    }),
+  }, async ({ clips }) => {
+    if (process.env.VERCEL_ENV !== "preview" || !databaseConnection()) {
+      return fail("Suno imports are available only in the configured Preview environment.");
+    }
+    if (new Set(clips.map((clip) => clip.id.toLowerCase())).size !== clips.length) {
+      return fail("Each Suno ID must occur only once per batch.");
+    }
+    try {
+      const sql = getNeon();
+      await sql`INSERT INTO catalog.sources (source_key, title, source_kind, notes)
+        VALUES ('suno-library-sync', 'Suno library synchronization', 'PROVIDER_VERIFIED',
+          'Entries supplied from the connected Suno library; album and publication status require separate evidence.')
+        ON CONFLICT (source_key) DO NOTHING`;
+      const rows = await sql`
+        INSERT INTO catalog.suno_clips (clip_id, title, suno_url, created_at_suno, visibility, source_key)
+        SELECT entry.id::uuid, entry.title, 'https://suno.com/song/' || entry.id,
+          entry.created_at::timestamptz, entry.visibility, 'suno-library-sync'
+        FROM jsonb_to_recordset(${JSON.stringify(clips)}::jsonb)
+          AS entry(id text, title text, created_at text, visibility text)
+        ON CONFLICT (clip_id) DO UPDATE SET title = EXCLUDED.title,
+          suno_url = EXCLUDED.suno_url, created_at_suno = COALESCE(EXCLUDED.created_at_suno, catalog.suno_clips.created_at_suno),
+          visibility = COALESCE(EXCLUDED.visibility, catalog.suno_clips.visibility), last_observed_at = now()
+        RETURNING clip_id`;
+      return result({ imported: rows.length, note: "Suno observations only. Album, song and release associations remain unconfirmed." });
+    } catch {
+      return fail("Could not import Suno observations. Check that the Preview catalog schema is available.");
+    }
+  });
+  server.registerTool("sync_suno_album_playlist", {
+    _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
+    description: "On explicit request update one linked Preview album playlist. First call get_suno_album_playlist, then read every page from the Suno playlist. Supply its current clip_count, the complete ordered list and the returned sync_version. Never submit partial pages. Does not publish or schedule.",
+    inputSchema: z.object({
+      album_id: z.string().regex(/^alb_[a-f0-9]{12}$/),
+      playlist_id: z.string().uuid(),
+      sync_version: z.string().min(1).max(100),
+      expected_count: z.number().int().min(1).max(500),
+      clips: z.array(z.object({
+        id: z.string().uuid(), title: z.string().trim().min(1).max(500),
+        created_at: z.string().datetime({ offset: true }).optional(),
+        visibility: z.enum(["public", "private"]).optional(),
+      })).min(1).max(500),
+    }),
+  }, async ({ album_id, playlist_id, sync_version, expected_count, clips }) => {
+    const connection = databaseConnection();
+    if (process.env.VERCEL_ENV !== "preview" || !connection) return fail("Playlist updates require the configured Preview environment.");
+    if (clips.length !== expected_count || new Set(clips.map((clip) => clip.id.toLowerCase())).size !== clips.length) {
+      return fail("Playlist count does not match the complete unique Suno results. Read all pages before retrying.");
+    }
+    const pool = new Pool({ connectionString: connection, max: 1, connectionTimeoutMillis: 5000 });
+    try {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const current = await client.query(`SELECT c.collection_key FROM catalog.review_album_playlists l
+          JOIN catalog.suno_collections c ON c.collection_key = l.collection_key
+          WHERE l.snapshot_id = $1 AND l.album_id = $2 AND c.external_id = $3::uuid
+            AND c.observed_at = $4::timestamptz FOR UPDATE OF c`,
+          ["d0286d0dc0cf03caf5289c872c94b60d1c6f7739364507011bd15f1cdc590915", album_id, playlist_id, sync_version]);
+        if (!current.rowCount) {
+          await client.query("ROLLBACK");
+          return fail("Playlist mapping or version changed. Read the album playlist again before retrying.");
+        }
+        const collectionKey = current.rows[0].collection_key;
+        await client.query(`INSERT INTO catalog.sources (source_key,title,source_kind,notes)
+          VALUES ('suno-library-sync','Suno library synchronization','PROVIDER_VERIFIED',
+            'Suno observations; release status requires separate evidence.') ON CONFLICT (source_key) DO NOTHING`);
+        await client.query(`INSERT INTO catalog.suno_clips (clip_id,title,suno_url,created_at_suno,visibility,source_key)
+          SELECT x.id::uuid,x.title,'https://suno.com/song/' || x.id,x.created_at::timestamptz,x.visibility,'suno-library-sync'
+          FROM jsonb_to_recordset($1::jsonb) AS x(id text,title text,created_at text,visibility text)
+          ON CONFLICT (clip_id) DO UPDATE SET title=EXCLUDED.title,suno_url=EXCLUDED.suno_url,
+            created_at_suno=COALESCE(EXCLUDED.created_at_suno,catalog.suno_clips.created_at_suno),
+            visibility=COALESCE(EXCLUDED.visibility,catalog.suno_clips.visibility),last_observed_at=now()`, [JSON.stringify(clips)]);
+        await client.query("DELETE FROM catalog.suno_collection_clips WHERE collection_key=$1", [collectionKey]);
+        await client.query(`INSERT INTO catalog.suno_collection_clips (collection_key,clip_id,listed_position)
+          SELECT $1, x.id::uuid, x.position::integer FROM jsonb_to_recordset($2::jsonb) AS x(id text,position integer)`,
+          [collectionKey, JSON.stringify(clips.map((clip, index) => ({ id: clip.id, position: index + 1 })))]);
+        await client.query("UPDATE catalog.suno_collections SET observed_clip_count=$2, observed_at=clock_timestamp() WHERE collection_key=$1", [collectionKey, clips.length]);
+        await client.query("COMMIT");
+        return result({ album_id, playlist_id, count: clips.length, scheduled: false, published: false });
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally { client.release(); }
+    } catch { return fail("Could not update the Suno playlist in Preview."); }
+    finally { await pool.end(); }
+  });
+  server.registerTool("get_suno_album_playlist", {
+    _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
+    annotations: { readOnlyHint: true, destructiveHint: false },
+    description: "Get the Suno playlist and ordered song versions linked to a reviewed album. Find album_id with list_review_albums first. Playlist membership does not imply a verified release.",
+    inputSchema: z.object({ album_id: z.string().regex(/^alb_[a-f0-9]{12}$/) }),
+  }, async ({ album_id }) => {
+    try {
+      const sql = getNeon();
+      const rows = await sql`SELECT a.album->>'album' AS album, c.display_name AS playlist,
+        c.external_url AS playlist_url, c.external_id AS playlist_id, c.observed_at::text AS sync_version, m.listed_position, s.clip_id, s.title, s.suno_url
+        FROM catalog.review_album_playlists l
+        JOIN catalog.review_album_snapshots a USING (snapshot_id, album_id)
+        JOIN catalog.suno_collections c ON c.collection_key = l.collection_key
+        JOIN catalog.suno_collection_clips m ON m.collection_key = c.collection_key
+        JOIN catalog.suno_clips s ON s.clip_id = m.clip_id
+        WHERE l.snapshot_id = 'd0286d0dc0cf03caf5289c872c94b60d1c6f7739364507011bd15f1cdc590915'
+          AND l.album_id = ${album_id}
+        ORDER BY m.listed_position, s.clip_id`;
+      if (!rows.length) return fail("No Suno playlist is linked to this album in Preview.");
+      return result({ album: rows[0].album, playlist: rows[0].playlist, playlist_url: rows[0].playlist_url, playlist_id: rows[0].playlist_id, sync_version: rows[0].sync_version,
+        tracks: rows.map(({ listed_position, clip_id, title, suno_url }) => ({ listed_position, clip_id, title, suno_url })),
+        note: "Playlist membership does not establish release status." });
+    } catch { return fail("Could not read the linked Suno playlist."); }
+  });
+  server.registerTool("validate_campaign_draft", {
+    _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
+    annotations: { readOnlyHint: true, destructiveHint: false },
+    description: "Check a proposed campaign against the selected reviewed album playlist in Preview. Returns factual checks and missing brief fields for human review. Does not approve, schedule or publish.",
+    inputSchema: z.object({
+      album_id: z.string().regex(/^alb_[a-f0-9]{12}$/),
+      clip_id: z.string().uuid(),
+      platform: z.enum(["instagram", "tiktok", "youtube"]),
+      format: z.string().trim().max(160).optional(),
+      objective: z.string().trim().max(500).optional(),
+      copy: z.string().trim().max(4000).optional(),
+      asset: z.string().trim().max(1000).optional(),
+    }),
+  }, async ({ album_id, clip_id, platform, format, objective, copy, asset }) => {
+    try {
+      const sql = getNeon();
+      const rows = await sql`SELECT a.album->>'album' AS album, c.display_name AS playlist,
+          s.clip_id, s.title, s.suno_url, m.listed_position
+        FROM catalog.review_album_playlists l
+        JOIN catalog.review_album_snapshots a USING (snapshot_id,album_id)
+        JOIN catalog.suno_collections c ON c.collection_key=l.collection_key
+        JOIN catalog.suno_collection_clips m ON m.collection_key=c.collection_key
+        JOIN catalog.suno_clips s ON s.clip_id=m.clip_id
+        WHERE l.snapshot_id='d0286d0dc0cf03caf5289c872c94b60d1c6f7739364507011bd15f1cdc590915'
+          AND l.album_id=${album_id} AND s.clip_id=${clip_id}::uuid`;
+      if (!rows.length) return result({ status: "NEEDS_EVIDENCE", album_id, clip_id,
+        issues: ["The selected version was not found in the linked album playlist."], approved: false });
+      const missing = [!format && "format", !objective && "objective", !copy && "copy", !asset && "asset"].filter(Boolean);
+      return result({ status: missing.length ? "NEEDS_CHANGES" : "READY_FOR_HUMAN_REVIEW",
+        platform, album: rows[0], missing, approved: false, scheduled: false, published: false,
+        note: "Playlist membership does not establish publication status or rights. Human creative and factual review remains necessary." });
+    } catch { return fail("Could not validate the campaign against the Preview playlist."); }
+  });
+  server.registerTool("list_suno_clips", {
+    _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
+    description: "Search Suno library observations recorded in the Preview catalog. Observations do not confirm album membership or publication.",
+    inputSchema: z.object({ query: z.string().trim().max(200).optional(), limit: z.number().int().min(1).max(100).default(25), offset: z.number().int().min(0).default(0) }),
+  }, async ({ query, limit, offset }) => {
+    try {
+      const sql = getNeon();
+      const rows = await sql`SELECT clip_id, title, suno_url, created_at_suno, visibility, last_observed_at
+        FROM catalog.suno_clips WHERE position(lower(${query ?? ""}) in lower(title)) > 0
+        ORDER BY created_at_suno DESC NULLS LAST, clip_id LIMIT ${limit + 1} OFFSET ${offset}`;
+      return result({ clips: rows.slice(0, limit), next_offset: rows.length > limit ? offset + limit : null, note: "Suno observations do not establish album membership or publication." });
+    } catch { return fail("Could not read Suno observations."); }
+  });
+  server.registerTool("save_social_draft_material", {
+    _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
+    description: "On explicit user request, save or update a material reference for a DRAFT social post in Preview. The same draft, kind and label update the same entry. This records metadata and does not upload files, approve, schedule or publish.",
+    inputSchema: socialMaterialSchema,
+  }, async (material) => {
+    if (process.env.VERCEL_ENV !== "preview" || !databaseCapability("PATRICK_SOCIAL_DRAFT_WRITES_ENABLED")) {
+      return fail("Saving social materials is unavailable in this environment.");
+    }
+    try {
+      const sql = getNeon();
+      const rows = await sql`WITH draft AS (
+        SELECT id FROM public.content_drafts WHERE id=${material.draft_id}::uuid AND status='DRAFT' FOR UPDATE
+      )
+      INSERT INTO public.social_draft_materials (draft_id,kind,label,reference,state,start_seconds,end_seconds)
+      SELECT draft.id,${material.kind},${material.label},${material.reference},${material.state},
+        ${material.start_seconds ?? null},${material.end_seconds ?? null} FROM draft
+      ON CONFLICT (draft_id,kind,label) DO UPDATE SET reference=EXCLUDED.reference,state=EXCLUDED.state,
+        start_seconds=EXCLUDED.start_seconds,end_seconds=EXCLUDED.end_seconds,updated_at=now()
+      RETURNING id,draft_id,kind,label,reference,state,start_seconds,end_seconds,updated_at`;
+      if (!rows.length) return fail("The draft was not found or is no longer in DRAFT status.");
+      return result({ material: rows[0], uploaded: false, scheduled: false, published: false });
+    } catch { return fail("Could not save the social material reference."); }
+  });
+  server.registerTool("get_social_draft_materials", {
+    _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
+    annotations: { readOnlyHint: true, destructiveHint: false },
+    description: "Read a social draft and its recorded material references, including which reference types are supplied. References and rights are not verified.",
+    inputSchema: z.object({ draft_id: z.string().uuid() }),
+  }, async ({ draft_id }) => {
+    try {
+      const sql = getNeon();
+      const drafts = await sql`SELECT id,artist,platform,title,era,caption,status,created_at
+        FROM public.content_drafts WHERE id=${draft_id}::uuid`;
+      if (!drafts.length) return fail("Social draft not found.");
+      const materials = await sql`SELECT id,kind,label,reference,state,start_seconds,end_seconds,updated_at
+        FROM public.social_draft_materials WHERE draft_id=${draft_id}::uuid ORDER BY created_at,id`;
+      return result({ draft: drafts[0], materials, reference_status: summarizeMaterials(materials as Array<{ kind: string; state: string }>) });
+    } catch { return fail("Could not read the social draft materials."); }
+  });
   server.registerTool("save_video_production_draft", {
     _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
     description: "On explicit request, save shot and asset references as a draft in the configured database. Does not upload files, generate, schedule or publish.",
