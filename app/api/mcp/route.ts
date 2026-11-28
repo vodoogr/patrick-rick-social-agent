@@ -10,6 +10,7 @@ import { createVideoBrief } from "@/services/videoBrief";
 import { videoProductionSchema } from "@/services/videoProduction";
 import { socialMaterialSchema, summarizeMaterials } from "@/services/socialMaterials";
 import { reconcileMetricool } from "@/services/metricoolReconciliation";
+import { assessPublication } from "@/services/publicationEvidence";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,6 +25,24 @@ function fail(message: string) {
 
 const handler = createMcpHandler(() => {
   const server = new McpServer({ name: "patrick-rick-social-agent", version: "0.1.0" });
+  server.registerTool("assess_metricool_publication_evidence", {
+    _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
+    description: "Read-only comparison of one saved draft with caller-supplied recent Metricool scheduled and published results. Never confirms publication or failure: matching posts are candidates requiring identity verification. Does not contact Metricool or save changes.",
+    inputSchema: z.object({
+      draft_id: z.string().uuid(), song: z.string().trim().min(1).max(200), still_scheduled: z.boolean(),
+      published_candidates: z.array(z.object({ platform: z.enum(["instagram", "tiktok"]), published_at: z.string().datetime({offset:true}), url: z.string().url().max(2048), caption: z.string().max(10000) })).max(100),
+    }),
+  }, async ({ draft_id, song, still_scheduled, published_candidates }) => {
+    if (process.env.VERCEL_ENV !== "preview" || !databaseConnection()) return fail("Publication evidence requires the configured Preview environment.");
+    try {
+      const sql=getNeon();
+      const rows=await sql`SELECT draft_id,platform,publication_date,metricool_brand_id,metricool_uuid,observed_at FROM public.metricool_observations WHERE draft_id=${draft_id}::uuid`;
+      if (!rows.length) return fail("No saved Metricool observation for this draft.");
+      const row=rows[0];
+      const assessment=assessPublication({platform:row.platform as "instagram"|"tiktok",scheduled_at:new Date(row.publication_date as string).toISOString(),song,still_scheduled,observed_at:new Date().toISOString(),published_candidates});
+      return result({draft_id,metricool_brand_id:row.metricool_brand_id,metricool_uuid:row.metricool_uuid,stored_observed_at:row.observed_at,assessment,note:"Evidence and schedule presence supplied by caller; verify Metricool brand, UUID and data freshness. No status was saved or confirmed."});
+    } catch { return fail("Could not assess publication evidence. Check Preview database and supplied data."); }
+  });
   server.registerTool("save_metricool_observations", {
     _meta: { securitySchemes: [{ type: "oauth2", scopes: ["mcp:tools"] }] },
     description: "On user request save recent caller-supplied Metricool observations for existing proposal drafts in Preview. Does not contact Metricool, schedule, publish, or verify observations. Refresh Metricool before every update.",
